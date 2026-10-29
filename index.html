@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nidos Láser de Cama</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#1c1f1a; --muted:#6b7166; --line:#dfe2da;
+  --accent:#2f7d32; --accent-ink:#ffffff; --corte:#1f9d3a; --marca:#d4a20a;
+  --ok:#2f7d32; --ok-bg:#e6f2e4; --warn:#9a6a00; --warn-bg:#fbf1d6; --err:#b3261e; --err-bg:#fbe5e2;
+  --info:#55606b; --info-bg:#eceff1; --chip:#eef0ea; --shadow:0 1px 2px rgba(0,0,0,.06);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141612; --panel:#1d201b; --ink:#e7eae3; --muted:#9aa194; --line:#30352d;
+    --accent:#5dbb63; --accent-ink:#0d1a0e; --corte:#4cd068; --marca:#f2c230;
+    --ok:#7fd086; --ok-bg:#1d3320; --warn:#f0c35a; --warn-bg:#3a2f12; --err:#ff8a80; --err-bg:#3d1c19;
+    --info:#b7c0c8; --info-bg:#262b30; --chip:#272b24; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141612; --panel:#1d201b; --ink:#e7eae3; --muted:#9aa194; --line:#30352d;
+  --accent:#5dbb63; --accent-ink:#0d1a0e; --corte:#4cd068; --marca:#f2c230;
+  --ok:#7fd086; --ok-bg:#1d3320; --warn:#f0c35a; --warn-bg:#3a2f12; --err:#ff8a80; --err-bg:#3d1c19;
+  --info:#b7c0c8; --info-bg:#262b30; --chip:#272b24; --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+header h1 small{display:block;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.4px;text-transform:uppercase}
+.logo{width:30px;height:30px;border-radius:7px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink);font-weight:800}
+.sp{flex:1}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+button:hover,.btn:hover{border-color:var(--muted)}
+button.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+input[type=text],input[type=password]{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:100%}
+main{max-width:1280px;margin:0 auto;padding:14px 16px 60px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);margin-bottom:12px}
+details.card>summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;align-items:center;gap:8px;font-weight:600}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+details.card[open]>summary::before{transform:rotate(90deg)}
+details.card>summary .sub{font-weight:400;color:var(--muted);font-size:12.5px}
+.body{padding:0 14px 14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:700px){.grid2{grid-template-columns:1fr}}
+label.f{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12px;color:var(--muted)}
+.kpi.ok .v{color:var(--ok)} .kpi.warn .v{color:var(--warn)} .kpi.err .v{color:var(--err)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px;overflow-x:auto}
+.tab{border:none;background:none;padding:9px 12px;border-bottom:2px solid transparent;border-radius:0;color:var(--muted)}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tab .n{font-size:11px;background:var(--chip);padding:1px 6px;border-radius:9px;margin-left:2px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;background:var(--panel);position:sticky;top:0}
+td.num,th.num{text-align:right}
+.tw{overflow-x:auto}
+.st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;white-space:nowrap}
+.st.ok{background:var(--ok-bg);color:var(--ok)} .st.warn{background:var(--warn-bg);color:var(--warn)}
+.st.err{background:var(--err-bg);color:var(--err)} .st.info{background:var(--info-bg);color:var(--info)}
+.mono{font-family:var(--mono);font-size:12.5px}
+.muted{color:var(--muted)}
+tr.op{cursor:pointer} tr.op:hover td{background:var(--chip)}
+tr.det>td{background:var(--bg);padding:10px}
+.pcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.pc{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.pc .pv{height:150px;display:grid;place-items:center;background:var(--bg);border-radius:6px;cursor:zoom-in}
+.pc .pv svg{max-width:100%;max-height:140px}
+.pc .t{font-weight:600;font-size:13px;display:flex;justify-content:space-between;gap:6px}
+.pc .m{font-size:12px;color:var(--muted)}
+.iss{margin:0;padding:0;list-style:none;font-size:12.5px}
+.iss li{padding:2px 0}
+.iss li.err{color:var(--err)} .iss li.warn{color:var(--warn)}
+.chip{display:inline-block;background:var(--chip);border-radius:5px;padding:1px 6px;font-size:11.5px;margin-right:3px}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+#estado{font-size:12.5px;color:var(--muted)}
+.empty{padding:36px 16px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+.leg{display:flex;gap:12px;font-size:12px;color:var(--muted);align-items:center}
+.leg i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0;max-width:min(980px,96vw);width:96vw}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog .hd{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+dialog .cv{height:min(70vh,640px);display:grid;place-items:center;background:var(--bg)}
+dialog .cv svg{max-width:96%;max-height:96%}
+dialog .ft{padding:10px 14px;font-size:12.5px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.hide{display:none!important}
+.note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">N</div>
+  <h1><small>Línea Italia · Láser de cama</small>Nidos de corte · Validador de biblioteca</h1>
+  <span class="sp"></span>
+  <span id="estado"></span>
+  <label class="btn" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
+  <button id="bLeer" class="pri" title="Leer la biblioteca de Drive y validar los dibujos del programa">🔄 Leer biblioteca</button>
+  <button id="bTema" title="Tema claro/oscuro">🌓</button>
+</header>
+<main>
+  <details class="card" id="cfgCard">
+    <summary>⚙️ Conexión <span class="sub" id="cfgSub">sin configurar</span></summary>
+    <div class="body">
+      <div class="grid2">
+        <div><label class="f">URL de la aplicación web de Apps Script (termina en /exec)</label><input id="iUrl" type="text" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        <div><label class="f">Token (solo si lo configuraste en el script)</label><input id="iTok" type="password" placeholder="opcional"></div>
+      </div>
+      <div class="toolbar" style="margin-top:10px;margin-bottom:0">
+        <button id="bPing">🔌 Probar conexión</button>
+        <label class="btn" title="Probar sin Drive: selecciona archivos .dxf o .dxf.gz de tu equipo">📁 Modo local (archivos)<input id="fLocal" type="file" accept=".dxf,.gz" multiple hidden></label>
+        <button id="bCache" title="Borrar los dibujos guardados en este navegador">🧹 Limpiar caché</button>
+        <span class="muted" id="pingRes"></span>
+      </div>
+      <p class="note">Los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando Ingeniería los modifica en Drive.</p>
+    </div>
+  </details>
+
+  <div id="prog" class="hide card" style="padding:10px 14px"><div id="progTxt" class="muted">…</div><div class="bar"><i id="progBar"></i></div></div>
+
+  <div id="kpis" class="kpis"></div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-t="ops">📋 Programa <span class="n" id="nOps">0</span></button>
+    <button class="tab" data-t="exp">⚖️ Explosión por calibre</button>
+    <button class="tab" data-t="pen">🛠️ Pendientes Ingeniería <span class="n" id="nPen">0</span></button>
+    <button class="tab" data-t="bib">📚 Biblioteca <span class="n" id="nBib">0</span></button>
+  </div>
+
+  <section id="t-ops"></section>
+  <section id="t-exp" class="hide"></section>
+  <section id="t-pen" class="hide"></section>
+  <section id="t-bib" class="hide"></section>
+</main>
+
+<dialog id="dlg">
+  <div class="hd"><b id="dlgT"></b><span class="sp"></span><span class="leg"><span><i style="background:var(--corte)"></i>CORTE</span><span><i style="background:var(--marca)"></i>MARCA</span><span><i style="background:var(--err)"></i>Error</span></span><button id="dlgX">✕</button></div>
+  <div class="cv" id="dlgC"></div>
+  <div class="ft" id="dlgF"></div>
+</dialog>
+
+<script>
+"use strict";
+/* ============================== CONFIGURACIÓN ============================== */
+const LAMINA = { W: 1219.2, H: 3048 };                 // 4 × 10 ft en mm
+const AREA_HOJA = LAMINA.W * LAMINA.H / 1e6;          // m²
+const DENS = 7.85;                                    // kg/dm³ acero
+const ESPESOR = { 10:3.42, 11:3.04, 12:2.66, 13:2.28, 14:1.90, 16:1.52, 18:1.21, 20:0.91, 22:0.76, 24:0.61 }; // mm, lámina negra
+const CAL_MIN = 12, CAL_MAX = 24;
+const CAPAS = { CORTE: 3, MARCA: 2 };                 // nombre → color ACI esperado
+const TOL = 0.05;                                     // mm, unión de extremos
+const LOTE = 20;                                      // archivos por petición
+const URL_DEFAULT = "https://script.google.com/macros/s/AKfycbyM9Stpc1fB97aRf0o5TTmu2KkD-5Zp-ZmXrezbN150RX1PpAAbO5kphlnixiob7wLf/exec";
+
+/* ============================== UTILIDADES ============================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const fmt = (n, d = 0) => Number(n).toLocaleString("es-MX", { minimumFractionDigits: d, maximumFractionDigits: d });
+const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
+const ls = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+function estado(t) { $("#estado").textContent = t || ""; }
+function progreso(txt, frac) {
+  const p = $("#prog");
+  if (txt == null) { p.classList.add("hide"); return; }
+  p.classList.remove("hide"); $("#progTxt").textContent = txt; $("#progBar").style.width = Math.round((frac || 0) * 100) + "%";
+}
+
+/* ============================== ESTADO ============================== */
+const S = {
+  programa: null,        // {nombre, ops:[{op, ruta, desc, cant, inicio, cod}]}
+  biblio: null,          // {origen, raiz, generado, rutas: Map(rutaNorm → {ruta, tieneLamina, archivos:[meta]})}
+  analisis: new Map(),   // fileId → resultado
+  local: new Map(),      // fileId → bytes (modo local)
+};
+
+/* ============================== CACHÉ (IndexedDB) ============================== */
+const idb = (() => {
+  let dbp = null;
+  function db() {
+    if (!dbp) dbp = new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open("nidos-laser", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("dxf");
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+    return dbp;
+  }
+  async function tx(mode, fn) {
+    try { const d = await db(); return await new Promise((res, rej) => { const t = d.transaction("dxf", mode); const r = fn(t.objectStore("dxf")); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); }
+    catch { return undefined; }
+  }
+  return {
+    get: k => tx("readonly", s => s.get(k)),
+    put: (k, v) => tx("readwrite", s => s.put(v, k)),
+    clear: () => tx("readwrite", s => s.clear()),
+  };
+})();
+
+/* ============================== JSONP ============================== */
+let jsonpN = 0;
+function jsonp(params, timeoutMs = 180000) {
+  const url = (ls.get("nl_url", "") || URL_DEFAULT).trim();
+  if (!url) return Promise.reject(new Error("Configura la URL del Apps Script en ⚙️ Conexión"));
+  const tok = ls.get("nl_tok", "");
+  return new Promise((res, rej) => {
+    const cb = "__nl" + (++jsonpN) + "_" + Date.now();
+    const q = new URLSearchParams({ ...params, callback: cb }); if (tok) q.set("token", tok);
+    const sc = document.createElement("script");
+    const fin = () => { delete window[cb]; sc.remove(); clearTimeout(to); };
+    const to = setTimeout(() => { fin(); rej(new Error("Sin respuesta de Apps Script (tiempo agotado)")); }, timeoutMs);
+    window[cb] = d => { fin(); d && d.ok ? res(d) : rej(new Error((d && d.error) || "Respuesta inválida")); };
+    sc.onerror = () => { fin(); rej(new Error("No se pudo contactar el Apps Script. Revisa la URL y que esté implementado con acceso 'Cualquier usuario'.")); };
+    sc.src = url + (url.includes("?") ? "&" : "?") + q.toString();
+    document.head.appendChild(sc);
+  });
+}
+
+/* ============================== DESCOMPRESIÓN ============================== */
+const b64ToBytes = b64 => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+async function gunzipTodo(bytes) {
+  let b = bytes, capas = 0;
+  while (b.length > 2 && b[0] === 0x1f && b[1] === 0x8b) {
+    if (typeof DecompressionStream === "undefined") throw new Error("Este navegador no puede descomprimir .gz (usa Chrome o Edge actualizados)");
+    const ds = new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"));
+    b = new Uint8Array(await new Response(ds).arrayBuffer());
+    if (++capas > 5) throw new Error("Compresión anidada inválida");
+  }
+  return { bytes: b, capas };
+}
+function bytesATexto(b) {
+  let t = new TextDecoder("utf-8").decode(b);
+  if (t.includes("�")) t = new TextDecoder("windows-1252").decode(b);
+  return t;
+}
+
+/* ============================== LECTURA DXF ============================== */
+function parseDXF(txt) {
+  if (/^AutoCAD Binary DXF/.test(txt)) throw new Error("DXF binario no soportado: guardar como DXF ASCII");
+  const L = txt.split(/\r\n|\r|\n/);
+  const P = [];
+  for (let i = 0; i + 1 < L.length; i += 2) {
+    const c = parseInt(L[i].trim(), 10);
+    if (Number.isNaN(c)) continue;
+    P.push([c, L[i + 1].replace(/\s+$/, "")]);
+  }
+  if (!P.length) throw new Error("Archivo vacío o no es DXF");
+  const out = { insunits: null, version: null, capas: {}, ents: [], bloques: 0 };
+  let sec = null, i = 0;
+  while (i < P.length) {
+    const [c, v] = P[i];
+    if (c === 0 && v === "SECTION") { sec = P[i + 1] && P[i + 1][1]; i += 2; continue; }
+    if (c === 0 && v === "ENDSEC") { sec = null; i++; continue; }
+    if (sec === "HEADER" && c === 9) {
+      if (v === "$INSUNITS") out.insunits = parseInt(P[i + 1][1], 10);
+      if (v === "$ACADVER") out.version = P[i + 1][1].trim();
+      i += 2; continue;
+    }
+    if (sec === "TABLES" && c === 0 && v === "LAYER") {
+      let j = i + 1, nombre = null, color = 7;
+      while (j < P.length && P[j][0] !== 0) { if (P[j][0] === 2) nombre = P[j][1].trim(); if (P[j][0] === 62) color = parseInt(P[j][1], 10); j++; }
+      if (nombre != null) out.capas[nombre] = { color: Math.abs(color), apagada: color < 0 };
+      i = j; continue;
+    }
+    if (sec === "BLOCKS" && c === 0 && v === "BLOCK") out.bloques++;
+    if (sec === "ENTITIES" && c === 0) {
+      const tipo = v.trim(); let j = i + 1; const raw = [];
+      while (j < P.length && P[j][0] !== 0) { raw.push(P[j]); j++; }
+      const e = { tipo, raw };
+      if (tipo === "POLYLINE") {
+        e.vert = [];
+        while (j < P.length && P[j][0] === 0 && P[j][1].trim() === "VERTEX") {
+          let k = j + 1; const vr = [];
+          while (k < P.length && P[k][0] !== 0) { vr.push(P[k]); k++; }
+          e.vert.push(vr); j = k;
+        }
+        if (j < P.length && P[j][1].trim() === "SEQEND") { j++; while (j < P.length && P[j][0] !== 0) j++; }
+      }
+      if (tipo !== "SEQEND" && tipo !== "ENDSEC") out.ents.push(e);
+      i = j; continue;
+    }
+    i++;
+  }
+  for (const e of out.ents) {
+    const g = c => { const p = e.raw.find(x => x[0] === c); return p ? p[1] : undefined; };
+    e.capa = (g(8) ?? "0").trim();
+    const col = g(62); e.color = col == null ? 256 : parseInt(col, 10);
+    e.trueColor = g(420) != null;
+    e.extrZ = parseFloat(g(230) ?? "1");
+  }
+  return out;
+}
+
+/* ---------- geometría ---------- */
+const num = (raw, c, d = 0) => { const p = raw.find(x => x[0] === c); return p ? parseFloat(p[1]) : d; };
+function arcoPts(cx, cy, r, a0, a1) {           // grados, sentido antihorario
+  let da = a1 - a0; while (da <= 0) da += 360; if (da > 360) da = 360;
+  const n = Math.max(4, Math.ceil(da / 4));
+  const pts = [];
+  for (let k = 0; k <= n; k++) { const a = (a0 + da * k / n) * Math.PI / 180; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  return pts;
+}
+function bulgePts(p0, p1, b) {
+  if (!b) return [p0, p1];
+  const th = 4 * Math.atan(b), dx = p1[0] - p0[0], dy = p1[1] - p0[1], c = Math.hypot(dx, dy);
+  if (c < 1e-9) return [p0, p1];
+  const r = c / (2 * Math.sin(th / 2)), mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+  const h = r * Math.cos(th / 2), ux = -dy / c, uy = dx / c;
+  const cx = mx + ux * h, cy = my + uy * h;
+  const a0 = Math.atan2(p0[1] - cy, p0[0] - cx);
+  const n = Math.max(2, Math.ceil(Math.abs(th) * 180 / Math.PI / 4)), R = Math.abs(r), pts = [];
+  for (let k = 0; k <= n; k++) { const a = a0 + th * k / n; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); }
+  pts[0] = p0; pts[pts.length - 1] = p1;
+  return pts;
+}
+function nurbs(ctrl, knots, w, deg, nSeg) {
+  const n = ctrl.length;
+  if (n < 2) return ctrl.slice();
+  if (!knots || knots.length !== n + deg + 1) {   // nudos uniformes cerrados
+    knots = []; for (let k = 0; k < n + deg + 1; k++) knots.push(k <= deg ? 0 : k >= n ? n - deg : k - deg);
+  }
+  const W = w && w.length === n ? w : ctrl.map(() => 1);
+  const t0 = knots[deg], t1 = knots[n], pts = [];
+  for (let s = 0; s <= nSeg; s++) {
+    const t = t0 + (t1 - t0) * s / nSeg;
+    let k = deg; while (k < n - 1 && t >= knots[k + 1]) k++;
+    const d = []; for (let j = 0; j <= deg; j++) { const q = ctrl[k - deg + j], ww = W[k - deg + j]; d.push([q[0] * ww, q[1] * ww, ww]); }
+    for (let r = 1; r <= deg; r++) for (let j = deg; j >= r; j--) {
+      const i = k - deg + j, den = knots[i + deg - r + 1] - knots[i], a = den === 0 ? 0 : (t - knots[i]) / den;
+      d[j] = [(1 - a) * d[j - 1][0] + a * d[j][0], (1 - a) * d[j - 1][1] + a * d[j][1], (1 - a) * d[j - 1][2] + a * d[j][2]];
+    }
+    pts.push([d[deg][0] / d[deg][2], d[deg][1] / d[deg][2]]);
+  }
+  return pts;
+}
+/** Convierte una entidad en {pts, cerrada} o {soporte:false, motivo} */
+function aPolilinea(e) {
+  const R = e.raw, f = (c, d) => num(R, c, d);
+  const espejo = e.extrZ < 0;
+  const fin = (pts, cerrada) => ({ pts: espejo ? pts.map(p => [-p[0], p[1]]) : pts, cerrada });
+  switch (e.tipo) {
+    case "LINE": return { pts: [[f(10), f(20)], [f(11), f(21)]], cerrada: false };
+    case "CIRCLE": { const p = arcoPts(f(10), f(20), f(40), 0, 360); p.pop(); return fin(p, true); }
+    case "ARC": return fin(arcoPts(f(10), f(20), f(40), f(50), f(51)), false);
+    case "LWPOLYLINE": {
+      const v = []; let cur = null;
+      for (const [c, s] of R) {
+        if (c === 10) { cur = { x: parseFloat(s), y: 0, b: 0 }; v.push(cur); }
+        else if (c === 20 && cur) cur.y = parseFloat(s);
+        else if (c === 42 && cur) cur.b = parseFloat(s);
+      }
+      const cerrada = (f(70) & 1) === 1;
+      return fin(polyBulge(v, cerrada), cerrada);
+    }
+    case "POLYLINE": {
+      const flags = f(70); if (flags & 16 || flags & 64) return { soporte: false, motivo: "Polilínea 3D/malla" };
+      const v = e.vert.map(vr => ({ x: num(vr, 10), y: num(vr, 20), b: num(vr, 42) }));
+      const cerrada = (flags & 1) === 1;
+      return fin(polyBulge(v, cerrada), cerrada);
+    }
+    case "SPLINE": {
+      const deg = f(71, 3), flags = f(70), ctrl = [], fit = [], knots = [], w = [];
+      let cx = null, fx = null;
+      for (const [c, s] of R) {
+        if (c === 10) cx = parseFloat(s); else if (c === 20 && cx != null) { ctrl.push([cx, parseFloat(s)]); cx = null; }
+        else if (c === 11) fx = parseFloat(s); else if (c === 21 && fx != null) { fit.push([fx, parseFloat(s)]); fx = null; }
+        else if (c === 40) knots.push(parseFloat(s)); else if (c === 41) w.push(parseFloat(s));
+      }
+      const cerrada = (flags & 1) === 1;
+      if (ctrl.length >= deg + 1) return { pts: nurbs(ctrl, knots, w, deg, Math.max(24, ctrl.length * 10)), cerrada };
+      if (fit.length >= 2) return { pts: fit, cerrada };
+      return { soporte: false, motivo: "Spline sin puntos" };
+    }
+    case "ELLIPSE": {
+      const cx = f(10), cy = f(20), mx = f(11), my = f(21), ra = f(40), p0 = f(41, 0), p1 = f(42, 2 * Math.PI);
+      const a = Math.hypot(mx, my), b = a * ra, rot = Math.atan2(my, mx);
+      let dp = p1 - p0; while (dp <= 0) dp += 2 * Math.PI;
+      const n = Math.max(16, Math.ceil(dp / (Math.PI / 45))), pts = [];
+      for (let k = 0; k <= n; k++) { const t = p0 + dp * k / n, x = a * Math.cos(t), y = b * Math.sin(t); pts.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]); }
+      const completa = Math.abs(dp - 2 * Math.PI) < 1e-6; if (completa) pts.pop();
+      return fin(pts, completa);
+    }
+    case "POINT": return { soporte: false, motivo: "Punto suelto", ignorar: true };
+    case "TEXT": case "MTEXT": return { soporte: false, motivo: "Texto como fuente (debe ir en trazos)" };
+    case "INSERT": return { soporte: false, motivo: "Bloque (INSERT) sin explotar" };
+    case "DIMENSION": return { soporte: false, motivo: "Cota dentro del dibujo" };
+    case "HATCH": return { soporte: false, motivo: "Achurado (HATCH)" };
+    default: return { soporte: false, motivo: "Entidad " + e.tipo };
+  }
+}
+function polyBulge(v, cerrada) {
+  const pts = [];
+  const n = v.length; if (!n) return pts;
+  const segs = cerrada ? n : n - 1;
+  for (let k = 0; k < segs; k++) {
+    const a = v[k], b = v[(k + 1) % n], s = bulgePts([a.x, a.y], [b.x, b.y], a.b);
+    if (k > 0) s.shift(); pts.push(...s);
+  }
+  if (segs === 0) pts.push([v[0].x, v[0].y]);
+  if (cerrada && pts.length > 1) pts.pop();
+  return pts;
+}
+const largo = (pts, cerrada) => { let s = 0; for (let k = 1; k < pts.length; k++) s += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); if (cerrada && pts.length > 2) s += Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]); return s; };
+const areaF = pts => { let s = 0; for (let k = 0, j = pts.length - 1; k < pts.length; j = k++) s += (pts[j][0] + pts[k][0]) * (pts[j][1] - pts[k][1]); return s / 2; };
+const dentro = (p, poly) => { let c = false; for (let k = 0, j = poly.length - 1; k < poly.length; j = k++) { const a = poly[k], b = poly[j]; if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+const cerca = (a, b) => Math.abs(a[0] - b[0]) <= TOL && Math.abs(a[1] - b[1]) <= TOL;
+
+/** Une segmentos abiertos en lazos cerrados. Devuelve {lazos, abiertos} */
+function encadenar(items) {
+  const lazos = [], abiertos = [];
+  const pend = [];
+  for (const it of items) {
+    if (it.cerrada || (it.pts.length > 2 && cerca(it.pts[0], it.pts[it.pts.length - 1]))) {
+      const p = it.cerrada ? it.pts : it.pts.slice(0, -1); lazos.push(p);
+    } else pend.push(it.pts.slice());
+  }
+  const usado = new Array(pend.length).fill(false);
+  for (let s = 0; s < pend.length; s++) {
+    if (usado[s]) continue;
+    usado[s] = true; let cad = pend[s].slice(), cerro = false, avanzo = true;
+    while (avanzo) {
+      avanzo = false;
+      if (cad.length > 2 && cerca(cad[0], cad[cad.length - 1])) { cerro = true; break; }
+      const fin = cad[cad.length - 1], ini = cad[0];
+      for (let k = 0; k < pend.length; k++) {
+        if (usado[k]) continue; const q = pend[k];
+        if (cerca(fin, q[0])) { cad.push(...q.slice(1)); }
+        else if (cerca(fin, q[q.length - 1])) { cad.push(...q.slice(0, -1).reverse()); }
+        else if (cerca(ini, q[q.length - 1])) { cad = q.slice(0, -1).concat(cad); }
+        else if (cerca(ini, q[0])) { cad = q.slice(1).reverse().concat(cad); }
+        else continue;
+        usado[k] = true; avanzo = true; break;
+      }
+    }
+    if (cerro || (cad.length > 2 && cerca(cad[0], cad[cad.length - 1]))) { cad.pop(); lazos.push(cad); }
+    else abiertos.push(cad);
+  }
+  return { lazos, abiertos };
+}
+function claveEnt(e, pl) {
+  const r = v => Math.round(v * 100) / 100;
+  if (!pl || !pl.pts) return null;
+  const pts = pl.pts.map(p => [r(p[0]), r(p[1])]);
+  if (e.tipo === "LINE") { const a = pts[0].join(","), b = pts[1].join(","); return e.capa + "|L|" + [a, b].sort().join("|"); }
+  return e.capa + "|" + e.tipo + "|" + pts.map(p => p.join(",")).join(";");
+}
+
+/** Analiza un DXF ya parseado contra la convención */
+function analizar(dxf) {
+  const errores = [], avisos = [];
+  const add = (arr, txt) => { if (!arr.includes(txt)) arr.push(txt); };
+  // unidades
+  if (dxf.insunits === 1) add(errores, "Dibujo en pulgadas ($INSUNITS=1); debe estar en mm");
+  else if (dxf.insunits != null && dxf.insunits !== 4 && dxf.insunits !== 0) add(avisos, "Unidades del dibujo no son mm ($INSUNITS=" + dxf.insunits + ")");
+  // capas
+  const usadas = new Map();
+  for (const e of dxf.ents) usadas.set(e.capa, (usadas.get(e.capa) || 0) + 1);
+  const ajenas = [...usadas.keys()].filter(c => !(c in CAPAS));
+  if (ajenas.length) add(errores, "Geometría en capa(s) no válidas: " + ajenas.map(c => `"${c}" (${usadas.get(c)})`).join(", ") + ". Solo se aceptan CORTE y MARCA");
+  if (!usadas.get("CORTE")) add(errores, "No hay geometría en la capa CORTE");
+  for (const [n, col] of Object.entries(CAPAS)) {
+    const c = dxf.capas[n];
+    if (c && usadas.get(n) && c.color !== col) add(avisos, `Capa ${n} con color ${c.color}; debe ser ${col} (${n === "CORTE" ? "verde" : "amarillo"})`);
+    if (c && c.apagada && usadas.get(n)) add(avisos, `Capa ${n} está apagada`);
+  }
+  const conColor = dxf.ents.filter(e => e.color !== 256 || e.trueColor).length;
+  if (conColor) add(avisos, `${conColor} línea(s) con color asignado directo; debe ser "por capa"`);
+  // geometría
+  const corte = [], marca = [], vistos = new Set(); let dup = 0, nCorte = 0, nMarca = 0;
+  const dibujo = { corte: [], marca: [], abiertos: [] };
+  for (const e of dxf.ents) {
+    const pl = aPolilinea(e);
+    if (pl.soporte === false) {
+      if (pl.ignorar) continue;
+      if (e.capa === "MARCA" && (e.tipo === "TEXT" || e.tipo === "MTEXT")) add(avisos, "Texto en MARCA como fuente; conviene convertirlo a trazos");
+      else add(errores, `${pl.motivo} en capa ${e.capa}`);
+      continue;
+    }
+    const k = claveEnt(e, pl);
+    if (k && vistos.has(k)) { dup++; continue; }
+    if (k) vistos.add(k);
+    if (e.capa === "CORTE") { corte.push(pl); nCorte++; }
+    else { marca.push(pl); nMarca++; if (e.capa === "MARCA") dibujo.marca.push(pl); }
+  }
+  if (dup) add(avisos, `${dup} entidad(es) duplicada(s) (encimadas); se marcarían/cortarían dos veces`);
+  const res = { errores, avisos, dibujo, ancho: 0, alto: 0, area: 0, perimCorte: 0, largoMarca: 0, lazos: 0, barrenos: 0 };
+  res.largoMarca = dibujo.marca.reduce((s, p) => s + largo(p.pts, p.cerrada), 0);
+  // si no hay capa CORTE válida, analizar lo que exista para poder mostrar el dibujo
+  const base = corte.length ? corte : marca;
+  const { lazos, abiertos } = encadenar(base);
+  dibujo.corte = lazos; dibujo.abiertos = abiertos;
+  if (corte.length) {
+    if (abiertos.length) add(errores, `${abiertos.length} contorno(s) de corte abierto(s)`);
+    if (!lazos.length) add(errores, "No se forma ningún contorno cerrado de corte");
+  } else dibujo.corte = []; // se pinta como error abajo
+  if (!corte.length) { dibujo.sinCapa = lazos.concat(abiertos); }
+  // bbox
+  const todos = (corte.length ? lazos : (dibujo.sinCapa || [])).flat().concat(dibujo.marca.flatMap(p => p.pts));
+  if (todos.length) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of todos) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+    res.bbox = [x0, y0, x1, y1]; res.ancho = x1 - x0; res.alto = y1 - y0;
+  }
+  if (corte.length && lazos.length) {
+    const info = lazos.map(p => ({ p, a: Math.abs(areaF(p)) })).sort((a, b) => b.a - a.a);
+    for (const L of info) L.prof = info.filter(o => o !== L && o.a > L.a && dentro(L.p[0], o.p)).length;
+    const exteriores = info.filter(L => L.prof === 0);
+    if (exteriores.length > 1 && !abiertos.length) add(errores, `${exteriores.length} contornos exteriores independientes (¿varias piezas en un archivo?)`);
+    res.area = info.reduce((s, L) => s + (L.prof % 2 ? -L.a : L.a), 0) / 1e6; // m²
+    res.lazos = info.length; res.barrenos = info.filter(L => L.prof === 1).length;
+    res.perimCorte = lazos.reduce((s, p) => s + largo(p, true), 0) + abiertos.reduce((s, p) => s + largo(p, false), 0);
+    res.areaEnvolvente = res.ancho * res.alto / 1e6;
+    // ¿cabe en la lámina?
+    const W = res.ancho, H = res.alto;
+    if (!((W <= LAMINA.W && H <= LAMINA.H) || (H <= LAMINA.W && W <= LAMINA.H))) add(errores, `Pieza de ${fmt(W, 1)} × ${fmt(H, 1)} mm no cabe en la lámina 4×10`);
+  }
+  return res;
+}
+
+/* ============================== NOMBRES DE ARCHIVO ============================== */
+const RX_NOMBRE = /^(.+?)_(\d+)\s*PZ[AS]*_([A-Z0-9.]+)_(?:CAL\s*(\d+)_)?(.+?)(?:[ _]+V(\d+))?(?:[ _]*\(?(\d{4}-\d{2}-\d{2})\)?)?\.DXF(?:\.GZ)*$/i;
+function leerNombre(nombre) {
+  const m = String(nombre).trim().match(RX_NOMBRE);
+  if (!m) return null;
+  return { prefijo: m[1].trim(), pz: parseInt(m[2], 10), material: m[3].toUpperCase(), cal: m[4] ? parseInt(m[4], 10) : null,
+           pieza: m[5].trim().toUpperCase(), version: m[6] ? parseInt(m[6], 10) : null, fecha: m[7] || null };
+}
+
+/** Clasifica los archivos de una ruta: vigentes, respaldos, problemas de nombre */
+function clasificarRuta(r) {
+  const vig = [], resp = [], prob = [];
+  const grupos = new Map();
+  for (const a of r.archivos) {
+    if (!/\.dxf(\.gz)*$/i.test(a.nombre)) { prob.push({ a, sev: "info", txt: "No es DXF; se ignora" }); continue; }
+    if (/subiendo/i.test(a.nombre)) { prob.push({ a, sev: "info", txt: "Carga incompleta \"(subiendo)\"; se ignora" }); continue; }
+    const n = leerNombre(a.nombre);
+    if (!n) { prob.push({ a, sev: "err", txt: "El nombre no sigue la convención RUTA_NPZAS_LAMINA_CALxx_PIEZA vN (fecha)" }); continue; }
+    if (n.material !== "LAMINA") { prob.push({ a, sev: "warn", txt: `Material ${n.material} dentro de "DXF de lámina"; se ignora` }); continue; }
+    if (n.version == null) { prob.push({ a, sev: "err", txt: "Sin número de versión (vN); no se usa" }); continue; }
+    a.n = n;
+    const k = norm(n.pieza);
+    if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(a);
+  }
+  for (const [, arr] of grupos) {
+    arr.sort((x, y) => y.n.version - x.n.version || String(y.n.fecha || "").localeCompare(String(x.n.fecha || "")) || String(y.mod || "").localeCompare(String(x.mod || "")));
+    const v = arr[0]; v.avisosNombre = [];
+    const empatados = arr.filter(x => x.n.version === v.n.version);
+    if (empatados.length > 1) v.avisosNombre.push(`Hay ${empatados.length} archivos v${v.n.version} de esta pieza; se tomó el de fecha más reciente (${v.n.fecha || "sin fecha"}). Confirmar con Ingeniería`);
+    if (norm(v.n.prefijo) !== norm(r.ruta)) v.avisosNombre.push(`El nombre empieza con "${v.n.prefijo}" pero está en la carpeta "${r.ruta}"`);
+    if (v.n.cal == null) v.avisosNombre.push("ERR:Sin calibre en el nombre (CALxx)");
+    else if (v.n.cal < CAL_MIN || v.n.cal > CAL_MAX) v.avisosNombre.push(`Calibre ${v.n.cal} fuera del rango ${CAL_MIN}–${CAL_MAX}`);
+    vig.push(v); resp.push(...arr.slice(1));
+  }
+  vig.sort((a, b) => a.n.pieza.localeCompare(b.n.pieza));
+  return { vig, resp, prob };
+}
+
+/* ============================== PROGRAMA DE PRODUCCIÓN ============================== */
+function leerPrograma(buf, nombre) {
+  if (typeof XLSX === "undefined") throw new Error("No se cargó la librería de Excel (revisa la conexión a internet)");
+  const wb = XLSX.read(buf, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const filas = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const hi = filas.findIndex(f => f && f.some(c => norm(c) === "N RUTA" || norm(c) === "NO RUTA" || norm(c) === "Nº RUTA".normalize("NFD")) );
+  const idxH = hi >= 0 ? hi : filas.findIndex(f => f && f.some(c => /RUTA/.test(norm(c))));
+  if (idxH < 0) throw new Error("No encontré la columna 'Nº ruta' en el archivo");
+  const H = filas[idxH].map(norm);
+  const col = (...pats) => H.findIndex(h => pats.some(p => p.test(h)));
+  const cRuta = col(/^N.? ?RUTA$/, /RUTA/), cOp = col(/^N.?$/, /^NO\.?$/, /^N[º°O]$/), cCant = col(/^CANTIDAD$/),
+        cDesc = col(/^DESCRIPCION$/), cIni = col(/FECHA-HORA INICIAL/, /INICIAL/), cCod = col(/PROCEDENCIA/);
+  if (cCant < 0) throw new Error("No encontré la columna 'Cantidad'");
+  const ops = [];
+  for (const f of filas.slice(idxH + 1)) {
+    if (!f) continue;
+    const ruta = f[cRuta]; const cant = Number(f[cCant]);
+    if (ruta == null || ruta === "" || !cant) continue;
+    let ini = cIni >= 0 ? f[cIni] : null;
+    if (typeof ini === "number") { const d = XLSX.SSF.parse_date_code(ini); ini = d ? new Date(d.y, d.m - 1, d.d, d.H, d.M, Math.round(d.S)) : null; }
+    ops.push({ op: cOp >= 0 ? String(f[cOp] ?? "") : "", ruta: String(ruta).trim().replace(/\.0+$/, ""), cant,
+               desc: cDesc >= 0 ? String(f[cDesc] ?? "").trim() : "", cod: cCod >= 0 ? String(f[cCod] ?? "") : "",
+               inicio: ini instanceof Date && !isNaN(ini) ? ini : null });
+  }
+  if (!ops.length) throw new Error("El programa no tiene OPs con ruta y cantidad");
+  ops.sort((a, b) => (a.inicio ? a.inicio.getTime() : Infinity) - (b.inicio ? b.inicio.getTime() : Infinity));
+  return { nombre, ops };
+}
+
+/* ============================== CARGA DE BIBLIOTECA ============================== */
+async function cargarListado(refrescar) {
+  const d = await jsonp({ accion: "listar", refrescar: refrescar ? "1" : "0" });
+  const rutas = new Map();
+  for (const r of d.rutas) rutas.set(norm(r.ruta), { ruta: r.ruta, tieneLamina: !!r.tieneLamina, archivos: r.archivos || [] });
+  S.biblio = { origen: "drive", raiz: d.raiz, generado: d.generado, desdeCache: !!d.desdeCache, rutas };
+  for (const r of rutas.values()) r.clas = clasificarRuta(r);
+}
+
+async function obtenerTexto(meta) {
+  const clave = meta.id;
+  if (S.biblio.origen === "local") return bytesATexto((await gunzipTodo(S.local.get(clave))).bytes);
+  const c = await idb.get(clave);
+  if (c && c.mod === meta.mod && c.txt) return c.txt;
+  return null;
+}
+
+/** Descarga y analiza una lista de archivos vigentes */
+async function analizarArchivos(metas, etiqueta) {
+  const faltan = metas.filter(m => !S.analisis.has(m.id));
+  let hechos = 0;
+  const total = faltan.length;
+  const paso = () => progreso(`${etiqueta}: ${hechos} de ${total} dibujos`, total ? hechos / total : 1);
+  paso();
+  const porBajar = [];
+  for (const m of faltan) {
+    const t = await obtenerTexto(m);
+    if (t != null) { S.analisis.set(m.id, analizarTexto(t, m)); hechos++; paso(); }
+    else porBajar.push(m);
+  }
+  for (let k = 0; k < porBajar.length; k += LOTE) {
+    const lote = porBajar.slice(k, k + LOTE);
+    let d;
+    try { d = await jsonp({ accion: "archivos", ids: lote.map(m => m.id).join(",") }); }
+    catch (e) { for (const m of lote) S.analisis.set(m.id, { errores: ["No se pudo descargar: " + e.message], avisos: [], fallo: true }); hechos += lote.length; paso(); continue; }
+    for (const m of lote) {
+      const f = d.files && d.files[m.id];
+      if (!f) { S.analisis.set(m.id, { errores: ["No se pudo descargar: " + ((d.errores && d.errores[m.id]) || "sin respuesta")], avisos: [], fallo: true }); }
+      else {
+        try {
+          const { bytes } = await gunzipTodo(b64ToBytes(f.b64));
+          const txt = bytesATexto(bytes);
+          idb.put(m.id, { mod: m.mod, txt });
+          S.analisis.set(m.id, analizarTexto(txt, m));
+        } catch (e) { S.analisis.set(m.id, { errores: [e.message], avisos: [], fallo: true }); }
+      }
+      hechos++; paso();
+    }
+  }
+  progreso(null);
+}
+function analizarTexto(txt, meta) {
+  try { const dxf = parseDXF(txt); const r = analizar(dxf); r.version = dxf.version; return r; }
+  catch (e) { return { errores: ["No se pudo leer el DXF: " + e.message], avisos: [], fallo: true }; }
+}
+
+/** Resultado completo de una pieza vigente = análisis del dibujo + avisos del nombre */
+function resultadoPieza(meta) {
+  const a = S.analisis.get(meta.id) || { errores: [], avisos: [], pendiente: true };
+  const errores = [...a.errores], avisos = [...a.avisos];
+  for (const t of meta.avisosNombre || []) t.startsWith("ERR:") ? errores.push(t.slice(4)) : avisos.push(t);
+  const sev = a.pendiente ? "info" : errores.length ? "err" : avisos.length ? "warn" : "ok";
+  return { ...a, errores, avisos, sev };
+}
+
+/* ============================== EVALUACIÓN DEL PROGRAMA ============================== */
+function evaluarPrograma() {
+  if (!S.programa || !S.biblio) return null;
+  const filas = [];
+  for (const op of S.programa.ops) {
+    const r = S.biblio.rutas.get(norm(op.ruta));
+    const f = { op, r, piezas: [], sev: "info", etiqueta: "" };
+    if (!r) { f.estado = "sincarpeta"; f.etiqueta = "Sin carpeta"; }
+    else if (!r.clas.vig.length) { f.estado = "sinlamina"; f.etiqueta = r.tieneLamina ? "Carpeta de lámina vacía" : "Sin dibujos de lámina"; }
+    else {
+      f.piezas = r.clas.vig.map(m => ({ meta: m, res: resultadoPieza(m), total: m.n.pz * op.cant }));
+      const s = f.piezas.map(p => p.res.sev);
+      f.sev = s.includes("err") ? "err" : s.includes("info") ? "info" : s.includes("warn") ? "warn" : "ok";
+      f.estado = f.sev; f.etiqueta = { err: "Con errores", warn: "Lista con avisos", ok: "Lista", info: "Sin validar" }[f.sev];
+    }
+    filas.push(f);
+  }
+  return filas;
+}
+
+/* ============================== VISTAS ============================== */
+const ICON = { ok: "✅", warn: "⚠️", err: "❌", info: "⏳", sincarpeta: "📂", sinlamina: "⚪" };
+const chipEstado = (sev, txt) => `<span class="st ${sev === "sincarpeta" || sev === "sinlamina" ? "info" : sev}">${ICON[sev] || ""} ${esc(txt)}</span>`;
+
+function svgPieza(res, grande) {
+  const d = res && res.dibujo;
+  if (!d || !res.bbox) return `<span class="muted">sin vista</span>`;
+  const [x0, y0, x1, y1] = res.bbox, w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), m = Math.max(w, h) * 0.04;
+  const sw = Math.max(w, h) / (grande ? 700 : 220);
+  const path = (pts, cerr) => "M" + pts.map(p => (p[0] - x0 + m).toFixed(2) + " " + (y1 - p[1] + m).toFixed(2)).join("L") + (cerr ? "Z" : "");
+  let s = `<svg viewBox="0 0 ${(w + 2 * m).toFixed(1)} ${(h + 2 * m).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" style="width:${grande ? "100%" : "auto"};height:${grande ? "100%" : "140px"}">`;
+  s += `<g fill="none" stroke-linejoin="round" stroke-linecap="round" stroke-width="${(sw * 1.4).toFixed(3)}">`;
+  for (const p of d.corte) s += `<path d="${path(p, true)}" stroke="var(--corte)"/>`;
+  for (const p of d.sinCapa || []) s += `<path d="${path(p, false)}" stroke="var(--err)" stroke-dasharray="${sw * 6} ${sw * 4}"/>`;
+  for (const p of d.marca) s += `<path d="${path(p.pts, p.cerrada)}" stroke="var(--marca)"/>`;
+  for (const p of (d.corte.length ? d.abiertos : [])) {
+    s += `<path d="${path(p, false)}" stroke="var(--err)" stroke-width="${(sw * 3).toFixed(3)}"/>`;
+    for (const q of [p[0], p[p.length - 1]]) s += `<circle cx="${(q[0] - x0 + m).toFixed(2)}" cy="${(y1 - q[1] + m).toFixed(2)}" r="${(sw * 8).toFixed(2)}" stroke="var(--err)" stroke-width="${(sw * 2).toFixed(3)}"/>`;
+  }
+  return s + "</g></svg>";
+}
+
+function tarjetaPieza(meta, res, total) {
+  const iss = res.errores.map(t => `<li class="err">❌ ${esc(t)}</li>`).concat(res.avisos.map(t => `<li class="warn">⚠️ ${esc(t)}</li>`)).join("");
+  const dims = res.bbox ? `${fmt(res.ancho, 1)} × ${fmt(res.alto, 1)} mm` : "—";
+  return `<div class="pc">
+    <div class="t"><span>${esc(meta.n.pieza)}</span>${chipEstado(res.sev, { ok: "OK", warn: "Aviso", err: "Error", info: "Pendiente" }[res.sev])}</div>
+    <div class="pv" data-id="${esc(meta.id)}">${svgPieza(res)}</div>
+    <div class="m"><span class="chip">CAL ${meta.n.cal ?? "?"}</span><span class="chip">${meta.n.pz} pz/mueble</span><span class="chip">v${meta.n.version}</span>${total != null ? `<span class="chip"><b>${fmt(total)} pz</b></span>` : ""}</div>
+    <div class="m">${dims}${res.area ? ` · ${fmt(res.area * 100, 2)} dm² netos · corte ${fmt(res.perimCorte / 1000, 2)} m` : ""}${res.largoMarca ? ` · marca ${fmt(res.largoMarca / 1000, 2)} m` : ""}</div>
+    ${iss ? `<ul class="iss">${iss}</ul>` : ""}
+    <div class="m mono" title="${esc(meta.nombre)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(meta.nombre)}</div>
+  </div>`;
+}
+
+function vistaKPIs(filas) {
+  const k = $("#kpis");
+  if (!filas) {
+    const b = S.biblio;
+    k.innerHTML = b ? `<div class="kpi"><div class="v">${b.rutas.size}</div><div class="l">rutas en biblioteca</div></div>
+      <div class="kpi"><div class="v">${[...b.rutas.values()].filter(r => r.clas.vig.length).length}</div><div class="l">rutas con lámina</div></div>
+      <div class="kpi"><div class="v">${[...b.rutas.values()].reduce((s, r) => s + r.clas.vig.length, 0)}</div><div class="l">dibujos vigentes</div></div>` : "";
+    return;
+  }
+  const c = t => filas.filter(f => f.estado === t).length;
+  const piezas = filas.reduce((s, f) => s + f.piezas.reduce((a, p) => a + p.total, 0), 0);
+  const rutas = new Set(filas.map(f => norm(f.op.ruta))).size;
+  k.innerHTML = `
+    <div class="kpi"><div class="v">${filas.length}</div><div class="l">OPs · ${rutas} rutas</div></div>
+    <div class="kpi ok"><div class="v">${c("ok") + c("warn")}</div><div class="l">✅ OPs listas para anidar</div></div>
+    <div class="kpi warn"><div class="v">${c("warn")}</div><div class="l">⚠️ OPs con avisos</div></div>
+    <div class="kpi err"><div class="v">${c("err")}</div><div class="l">❌ OPs con errores</div></div>
+    <div class="kpi"><div class="v">${c("sincarpeta") + c("sinlamina")}</div><div class="l">📂 OPs sin dibujos de lámina</div></div>
+    <div class="kpi"><div class="v">${fmt(piezas)}</div><div class="l">piezas de lámina</div></div>`;
+}
+
+function vistaOps(filas) {
+  const el = $("#t-ops");
+  $("#nOps").textContent = filas ? filas.length : 0;
+  if (!S.programa) { el.innerHTML = `<div class="card empty"><b>📄 Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad).</div>`; return; }
+  if (!filas) { el.innerHTML = `<div class="card empty"><b>${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs</b>Presiona 🔄 Leer biblioteca para cruzarlo contra los dibujos de Drive.</div>`; return; }
+  const filtro = ls.get("nl_filtro", "todas");
+  const vis = filas.filter(f => filtro === "todas" || (filtro === "lamina" ? f.piezas.length : filtro === "problemas" ? ["err", "warn", "info"].includes(f.estado) : !f.piezas.length));
+  let h = `<div class="toolbar"><span class="muted">${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
+    <label class="muted">Ver:</label>
+    <select id="selFiltro" style="font:inherit;padding:6px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink)">
+      ${[["todas", "Todas las OPs"], ["lamina", "Solo con lámina"], ["problemas", "Con errores o avisos"], ["sin", "Sin dibujos de lámina"]].map(([v, t]) => `<option value="${v}" ${v === filtro ? "selected" : ""}>${t}</option>`).join("")}
+    </select></div>
+    <div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Inicio</th><th class="num">Piezas lámina</th><th>Calibres</th><th>Estado</th></tr></thead><tbody>`;
+  vis.forEach((f, i) => {
+    const pz = f.piezas.reduce((s, p) => s + p.total, 0);
+    const cals = [...new Set(f.piezas.map(p => p.meta.n.cal))].sort((a, b) => a - b).map(c => `<span class="chip">${c ?? "?"}</span>`).join("");
+    h += `<tr class="op" data-i="${i}"><td class="mono">${esc(f.op.op)}</td><td class="mono"><b>${esc(f.op.ruta)}</b></td><td>${esc(f.op.desc)}</td><td class="num">${fmt(f.op.cant)}</td>
+      <td class="muted">${f.op.inicio ? f.op.inicio.toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+      <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td></tr>`;
+    if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="8"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
+  });
+  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. 📂 Sin carpeta / ⚪ sin dibujos: la ruta no lleva lámina o Ingeniería aún no la sube.</p>`;
+  el.innerHTML = h;
+  $("#selFiltro").onchange = e => { ls.set("nl_filtro", e.target.value); render(); };
+  el.querySelectorAll("tr.op").forEach(tr => tr.onclick = () => { const d = el.querySelector(`tr[data-d="${tr.dataset.i}"]`); if (d) d.classList.toggle("hide"); });
+}
+
+function explosion(filas) {
+  const porCal = new Map();
+  for (const f of filas || []) for (const p of f.piezas) {
+    const c = p.meta.n.cal ?? "?";
+    if (!porCal.has(c)) porCal.set(c, { cal: c, piezas: 0, area: 0, refs: new Set(), ops: new Set(), errores: 0, corte: 0, marca: 0 });
+    const g = porCal.get(c);
+    g.piezas += p.total; g.refs.add(p.meta.id); g.ops.add(f.op.op);
+    if (p.res.sev === "err" || p.res.sev === "info") g.errores += p.total;
+    else { g.area += (p.res.area || 0) * p.total; g.corte += (p.res.perimCorte || 0) * p.total; g.marca += (p.res.largoMarca || 0) * p.total; }
+  }
+  return [...porCal.values()].sort((a, b) => (a.cal === "?") - (b.cal === "?") || a.cal - b.cal);
+}
+
+function vistaExp(filas) {
+  const el = $("#t-exp");
+  if (!filas) { el.innerHTML = `<div class="card empty"><b>⚖️ Explosión de material</b>Aparece al cruzar el programa con la biblioteca.</div>`; return; }
+  const E = explosion(filas);
+  if (!E.length) { el.innerHTML = `<div class="card empty"><b>Sin piezas de lámina</b>Ninguna ruta del programa tiene dibujos de lámina todavía.</div>`; return; }
+  let tA = 0, tK = 0, tH = 0, tP = 0;
+  let h = `<div class="card tw"><table><thead><tr><th>Calibre</th><th class="num">Espesor</th><th class="num">OPs</th><th class="num">Dibujos</th><th class="num">Piezas</th><th class="num">Área neta m²</th><th class="num">Kg netos</th><th class="num">Láminas mín. teóricas</th><th class="num">Metros de corte</th><th>Notas</th></tr></thead><tbody>`;
+  for (const g of E) {
+    const t = ESPESOR[g.cal], kg = t ? g.area * t * DENS : 0, hojas = g.area / AREA_HOJA;
+    tA += g.area; tK += kg; tH += Math.ceil(hojas - 1e-9); tP += g.piezas;
+    const nota = [g.cal !== "?" && (g.cal < CAL_MIN || g.cal > CAL_MAX) ? "⚠️ fuera de rango" : "", g.errores ? `❌ ${fmt(g.errores)} pz sin contar (dibujo con error)` : ""].filter(Boolean).join(" · ");
+    h += `<tr><td><b>CAL ${g.cal}</b></td><td class="num">${t ? fmt(t, 2) + " mm" : "—"}</td><td class="num">${g.ops.size}</td><td class="num">${g.refs.size}</td><td class="num">${fmt(g.piezas)}</td>
+      <td class="num">${fmt(g.area, 3)}</td><td class="num">${fmt(kg, 1)}</td><td class="num"><b>${fmt(hojas, 2)}</b> → ${fmt(Math.ceil(hojas - 1e-9))}</td><td class="num">${fmt(g.corte / 1000, 1)}</td><td class="muted">${nota}</td></tr>`;
+  }
+  h += `<tr><td><b>Total</b></td><td></td><td></td><td></td><td class="num"><b>${fmt(tP)}</b></td><td class="num"><b>${fmt(tA, 3)}</b></td><td class="num"><b>${fmt(tK, 1)}</b></td><td class="num"><b>${fmt(tH)}</b> hojas</td><td></td><td></td></tr></tbody></table></div>
+    <p class="note">Mínimo teórico = área neta de las piezas ÷ área de una hoja 4×10 (${fmt(AREA_HOJA, 3)} m²), sin separación ni esqueleto. El consumo real lo dará el motor de nidos en el siguiente paso. Kg con espesores nominales de lámina negra y densidad ${DENS}.</p>`;
+  el.innerHTML = h;
+}
+
+function listaPendientes(filas) {
+  const L = [];
+  const b = S.biblio; if (!b) return L;
+  const rutasProg = new Set((S.programa ? S.programa.ops : []).map(o => norm(o.ruta)));
+  const vistos = new Set();
+  const addPieza = (r, m) => {
+    const res = resultadoPieza(m); if (res.pendiente) return;
+    for (const t of res.errores) L.push({ sev: "err", ruta: r.ruta, archivo: m.nombre, txt: t, prog: rutasProg.has(norm(r.ruta)) });
+    for (const t of res.avisos) L.push({ sev: "warn", ruta: r.ruta, archivo: m.nombre, txt: t, prog: rutasProg.has(norm(r.ruta)) });
+  };
+  for (const r of b.rutas.values()) {
+    for (const m of r.clas.vig) { addPieza(r, m); vistos.add(m.id); }
+    for (const p of r.clas.prob) if (p.sev !== "info") L.push({ sev: p.sev, ruta: r.ruta, archivo: p.a.nombre, txt: p.txt, prog: rutasProg.has(norm(r.ruta)) });
+  }
+  if (filas) {
+    const ya = new Set();
+    for (const f of filas) if ((f.estado === "sincarpeta" || f.estado === "sinlamina") && !ya.has(norm(f.op.ruta))) {
+      ya.add(norm(f.op.ruta));
+      L.push({ sev: "info", ruta: f.op.ruta, archivo: "", txt: (f.estado === "sincarpeta" ? "La ruta no tiene carpeta en la biblioteca" : "La carpeta no tiene dibujos de lámina") + " — confirmar si lleva piezas de láser", prog: true, desc: f.op.desc });
+    }
+  }
+  const ord = { err: 0, warn: 1, info: 2 };
+  return L.sort((a, b) => (b.prog - a.prog) || ord[a.sev] - ord[b.sev] || a.ruta.localeCompare(b.ruta));
+}
+
+function vistaPen(filas) {
+  const el = $("#t-pen");
+  const L = listaPendientes(filas);
+  $("#nPen").textContent = L.filter(x => x.sev !== "info").length;
+  if (!S.biblio) { el.innerHTML = `<div class="card empty"><b>🛠️ Pendientes para Ingeniería</b>Aparecen al leer la biblioteca.</div>`; return; }
+  const solo = ls.get("nl_penprog", "1") === "1" && S.programa;
+  const V = solo ? L.filter(x => x.prog) : L;
+  let h = `<div class="toolbar">${S.programa ? `<label><input type="checkbox" id="chkProg" ${solo ? "checked" : ""}> Solo rutas del programa</label>` : ""}
+    <span style="flex:1"></span><button id="bExpPen">⬇️ Excel para Ingeniería</button></div>`;
+  if (!V.length) h += `<div class="card empty"><b>✅ Sin pendientes</b>Todos los dibujos revisados cumplen la convención.</div>`;
+  else {
+    h += `<div class="card tw"><table><thead><tr><th></th><th>Ruta</th><th>Archivo</th><th>Problema</th></tr></thead><tbody>`;
+    for (const x of V) h += `<tr><td>${ICON[x.sev]}</td><td class="mono"><b>${esc(x.ruta)}</b>${x.desc ? `<div class="muted" style="font-family:inherit">${esc(x.desc)}</div>` : ""}</td><td class="mono">${esc(x.archivo)}</td><td>${esc(x.txt)}</td></tr>`;
+    h += `</tbody></table></div>`;
+  }
+  const sinVal = [...S.biblio.rutas.values()].reduce((s, r) => s + r.clas.vig.filter(m => !S.analisis.has(m.id)).length, 0);
+  if (sinVal) h += `<p class="note">⏳ ${sinVal} dibujos de rutas fuera del programa aún no se revisan. Usa 📚 Biblioteca → 🔍 Validar toda la biblioteca.</p>`;
+  el.innerHTML = h;
+  const ch = $("#chkProg"); if (ch) ch.onchange = e => { ls.set("nl_penprog", e.target.checked ? "1" : "0"); render(); };
+  $("#bExpPen").onclick = () => exportarExcel(filas, L);
+}
+
+function vistaBib() {
+  const el = $("#t-bib");
+  const b = S.biblio;
+  if (!b) { el.innerHTML = `<div class="card empty"><b>📚 Biblioteca de Ingeniería</b>Configura la conexión y presiona 🔄 Leer biblioteca, o usa 📁 Modo local.</div>`; $("#nBib").textContent = 0; return; }
+  const rutas = [...b.rutas.values()].filter(r => r.clas.vig.length || r.clas.prob.length).sort((a, b) => a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
+  $("#nBib").textContent = rutas.length;
+  const tot = rutas.reduce((s, r) => s + r.clas.vig.length, 0), val = rutas.reduce((s, r) => s + r.clas.vig.filter(m => S.analisis.has(m.id)).length, 0);
+  let h = `<div class="toolbar"><span class="muted">${b.origen === "drive" ? `Drive · ${esc(b.raiz)} · leído ${new Date(b.generado).toLocaleString("es-MX")}${b.desdeCache ? " (caché del servidor)" : ""}` : "Modo local"}</span>
+    <span style="flex:1"></span><span class="muted">${val} de ${tot} dibujos revisados</span>
+    <button id="bValTodo" ${val === tot ? "disabled" : ""}>🔍 Validar toda la biblioteca</button></div>`;
+  for (const r of rutas) {
+    const res = r.clas.vig.map(m => resultadoPieza(m));
+    const sev = res.some(x => x.sev === "err") ? "err" : res.some(x => x.sev === "info") ? "info" : res.some(x => x.sev === "warn") ? "warn" : r.clas.vig.length ? "ok" : "info";
+    h += `<details class="card"><summary>${ICON[sev]} <span class="mono">${esc(r.ruta)}</span> <span class="sub">${r.clas.vig.length} vigentes${r.clas.resp.length ? ` · ${r.clas.resp.length} respaldo` : ""}${r.clas.prob.length ? ` · ${r.clas.prob.length} ignorados` : ""}</span></summary>
+      <div class="body"><div class="pcs">${r.clas.vig.map((m, i) => tarjetaPieza(m, res[i])).join("")}</div>
+      ${r.clas.resp.length ? `<p class="note">🗄️ Respaldo (no se usan): ${r.clas.resp.map(a => `<span class="mono">${esc(a.nombre)}</span>`).join(", ")}</p>` : ""}
+      ${r.clas.prob.length ? `<p class="note">🚫 Ignorados: ${r.clas.prob.map(p => `<span class="mono">${esc(p.a.nombre)}</span> (${esc(p.txt)})`).join(", ")}</p>` : ""}
+      </div></details>`;
+  }
+  el.innerHTML = h;
+  const bv = $("#bValTodo");
+  if (bv) bv.onclick = async () => { bv.disabled = true; try { await analizarArchivos(rutas.flatMap(r => r.clas.vig), "Validando biblioteca"); } catch (e) { alert(e.message); } render(); };
+}
+
+function render() {
+  const filas = evaluarPrograma();
+  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaPen(filas); vistaBib();
+  document.querySelectorAll(".pv[data-id]").forEach(d => d.onclick = () => abrirPieza(d.dataset.id));
+}
+
+function abrirPieza(id) {
+  let meta = null;
+  for (const r of S.biblio.rutas.values()) { meta = r.clas.vig.find(m => m.id === id); if (meta) break; }
+  if (!meta) return;
+  const res = resultadoPieza(meta);
+  $("#dlgT").textContent = `${meta.n.prefijo} · ${meta.n.pieza} · CAL ${meta.n.cal ?? "?"} · v${meta.n.version}`;
+  $("#dlgC").innerHTML = svgPieza(res, true);
+  $("#dlgF").innerHTML = `${res.bbox ? `<b>${fmt(res.ancho, 2)} × ${fmt(res.alto, 2)} mm</b> · ` : ""}${res.area ? `área neta ${fmt(res.area * 1e6, 0)} mm² · ${res.lazos} contornos (${res.barrenos} interiores) · corte ${fmt(res.perimCorte, 0)} mm · marca ${fmt(res.largoMarca, 0)} mm` : ""}
+    ${res.errores.concat(res.avisos).length ? `<ul class="iss" style="margin-top:6px">${res.errores.map(t => `<li class="err">❌ ${esc(t)}</li>`).join("")}${res.avisos.map(t => `<li class="warn">⚠️ ${esc(t)}</li>`).join("")}</ul>` : ""}
+    <div class="mono muted" style="margin-top:6px">${esc(meta.nombre)}</div>`;
+  $("#dlg").showModal();
+}
+
+/* ============================== EXPORTAR ============================== */
+function exportarExcel(filas, L) {
+  if (typeof XLSX === "undefined") return alert("No se cargó la librería de Excel");
+  const wb = XLSX.utils.book_new();
+  const sevT = { err: "Error", warn: "Aviso", info: "Falta dibujo" };
+  const p = L.map(x => ({ Severidad: sevT[x.sev], Ruta: x.ruta, "En programa": x.prog ? "Sí" : "No", Archivo: x.archivo, Problema: x.txt }));
+  const ws1 = XLSX.utils.json_to_sheet(p.length ? p : [{ Severidad: "", Ruta: "", "En programa": "", Archivo: "", Problema: "Sin pendientes" }]);
+  ws1["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 62 }, { wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, ws1, "Pendientes");
+  if (filas) {
+    const ex = explosion(filas).map(g => { const t = ESPESOR[g.cal]; return { Calibre: g.cal, "Espesor mm": t || "", Piezas: g.piezas, "Área neta m²": +g.area.toFixed(4), "Kg netos": t ? +(g.area * t * DENS).toFixed(2) : "", "Láminas mín. teóricas": +(g.area / AREA_HOJA).toFixed(3), "Piezas sin contar (error)": g.errores }; });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ex.length ? ex : [{ Calibre: "Sin piezas" }]), "Explosión");
+    const det = [];
+    for (const f of filas) {
+      if (!f.piezas.length) det.push({ OP: f.op.op, Ruta: f.op.ruta, Descripción: f.op.desc, Muebles: f.op.cant, Pieza: "", Calibre: "", "Pz/mueble": "", "Piezas totales": "", Estado: f.etiqueta, Archivo: "" });
+      for (const q of f.piezas) det.push({ OP: f.op.op, Ruta: f.op.ruta, Descripción: f.op.desc, Muebles: f.op.cant, Pieza: q.meta.n.pieza, Calibre: q.meta.n.cal, "Pz/mueble": q.meta.n.pz, "Piezas totales": q.total, Estado: { ok: "OK", warn: "Aviso", err: "Error", info: "Sin validar" }[q.res.sev], Archivo: q.meta.nombre });
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(det), "Detalle por OP");
+  }
+  const hoy = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `Validacion_biblioteca_laser_${hoy}.xlsx`);
+}
+
+/* ============================== EVENTOS ============================== */
+function syncCfg() {
+  const url = ls.get("nl_url", "") || URL_DEFAULT;
+  $("#iUrl").value = url; $("#iTok").value = ls.get("nl_tok", "");
+  $("#cfgSub").textContent = url ? "Apps Script configurado" : "sin configurar — abre para pegar la URL";
+  if (!url) $("#cfgCard").open = true;
+}
+$("#iUrl").onchange = e => { ls.set("nl_url", e.target.value.trim()); syncCfg(); };
+$("#iTok").onchange = e => { ls.set("nl_tok", e.target.value); };
+$("#bPing").onclick = async () => {
+  $("#pingRes").textContent = "Probando…";
+  try { const d = await jsonp({ accion: "ping" }, 60000); $("#pingRes").textContent = "✅ Conectado a: " + d.raiz; }
+  catch (e) { $("#pingRes").textContent = "❌ " + e.message; }
+};
+$("#bCache").onclick = async () => { await idb.clear(); S.analisis.clear(); estado("Caché limpia"); render(); };
+
+$("#fProg").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    S.programa = leerPrograma(new Uint8Array(await f.arrayBuffer()), f.name);
+    estado(`Programa: ${S.programa.ops.length} OPs`);
+    if (S.biblio) await analizarPrograma();
+  } catch (err) { alert("Programa: " + err.message); }
+  e.target.value = ""; render();
+};
+
+async function analizarPrograma() {
+  if (!S.programa || !S.biblio) return;
+  const metas = [];
+  for (const op of S.programa.ops) { const r = S.biblio.rutas.get(norm(op.ruta)); if (r) metas.push(...r.clas.vig); }
+  await analizarArchivos([...new Map(metas.map(m => [m.id, m])).values()], "Revisando dibujos del programa");
+}
+
+$("#bLeer").onclick = async () => {
+  const b = $("#bLeer"); b.disabled = true;
+  try {
+    progreso("Leyendo la biblioteca en Drive… (la primera vez puede tardar hasta 1 minuto)", 0.05);
+    const refrescar = !!S.biblio && S.biblio.origen === "drive";
+    S.analisis.clear();
+    await cargarListado(refrescar);
+    estado(`Biblioteca: ${S.biblio.rutas.size} rutas`);
+    await analizarPrograma();
+    progreso(null);
+  } catch (e) { progreso(null); alert(e.message); }
+  b.disabled = false; render();
+};
+
+$("#fLocal").onchange = async e => {
+  const files = [...e.target.files]; if (!files.length) return;
+  const rutas = new Map(); S.local.clear(); S.analisis.clear();
+  for (const f of files) {
+    const id = "local:" + f.name + ":" + f.size;
+    S.local.set(id, new Uint8Array(await f.arrayBuffer()));
+    const n = leerNombre(f.name), ruta = n ? n.prefijo : "(sin ruta)";
+    if (!rutas.has(norm(ruta))) rutas.set(norm(ruta), { ruta, tieneLamina: true, archivos: [] });
+    rutas.get(norm(ruta)).archivos.push({ id, nombre: f.name, mod: new Date(f.lastModified).toISOString(), kb: Math.round(f.size / 1024) });
+  }
+  S.biblio = { origen: "local", raiz: "Archivos locales", generado: new Date().toISOString(), rutas };
+  for (const r of rutas.values()) r.clas = clasificarRuta(r);
+  await analizarArchivos([...rutas.values()].flatMap(r => r.clas.vig), "Revisando archivos locales");
+  e.target.value = ""; estado(`Modo local: ${files.length} archivos`); render();
+};
+
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+  for (const s of ["ops", "exp", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== t.dataset.t);
+  ls.set("nl_tab", t.dataset.t);
+});
+$("#bTema").onclick = () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const nuevo = cur === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = nuevo; ls.set("nl_tema", nuevo);
+};
+$("#dlgX").onclick = () => $("#dlg").close();
+$("#dlg").onclick = e => { if (e.target.id === "dlg") $("#dlg").close(); };
+
+(function init() {
+  const t = ls.get("nl_tema", ""); if (t) document.documentElement.dataset.theme = t;
+  syncCfg();
+  const tab = ls.get("nl_tab", "ops"); const bt = document.querySelector(`.tab[data-t="${tab}"]`); if (bt) bt.click();
+  render();
+})();
+</script>
+</body>
+</html>

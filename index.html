@@ -229,8 +229,10 @@ function jsonp(params, timeoutMs = 180000) {
     const cb = "__nl" + (++jsonpN) + "_" + Date.now();
     const q = new URLSearchParams({ ...params, callback: cb }); if (tok) q.set("token", tok);
     const sc = document.createElement("script");
-    const fin = () => { delete window[cb]; sc.remove(); clearTimeout(to); };
-    const to = setTimeout(() => { fin(); rej(new Error("Sin respuesta de Apps Script (tiempo agotado)")); }, timeoutMs);
+    const onErr = ev => { if (ev.filename && ev.filename.indexOf(cb) >= 0) { fin(); rej(new Error("Google respondió con una página en lugar de datos. Revisa que la implementación tenga acceso \"Cualquier usuario\" y que hayas autorizado el script ejecutando \"probar\" en el editor.")); } };
+    window.addEventListener("error", onErr);
+    const fin = () => { delete window[cb]; sc.remove(); clearTimeout(to); window.removeEventListener("error", onErr); };
+    const to = setTimeout(() => { fin(); rej(new Error("Sin respuesta de Apps Script después de " + Math.round(timeoutMs / 1000) + " s. Si es la primera lectura, agrega el servicio \"Drive API\" al script (lo hace mucho más rápido) o ejecuta \"probar\" en el editor y vuelve a intentar.")); }, timeoutMs);
     window[cb] = d => { fin(); d && d.ok ? res(d) : rej(new Error((d && d.error) || "Respuesta inválida")); };
     sc.onerror = () => { fin(); rej(new Error("No se pudo contactar el Apps Script. Revisa la URL y que esté implementado con acceso 'Cualquier usuario'.")); };
     sc.src = url + (url.includes("?") ? "&" : "?") + q.toString();
@@ -615,7 +617,8 @@ function leerPrograma(buf, nombre) {
 
 /* ============================== CARGA DE BIBLIOTECA ============================== */
 async function cargarListado(refrescar) {
-  const d = await jsonp({ accion: "listar", refrescar: refrescar ? "1" : "0" });
+  const t0 = Date.now(), reloj = setInterval(() => progreso(`Leyendo la biblioteca en Drive… ${Math.round((Date.now() - t0) / 1000)} s`, 0.05), 1000);
+  let d; try { d = await jsonp({ accion: "listar", refrescar: refrescar ? "1" : "0" }, 360000); } finally { clearInterval(reloj); }
   const rutas = new Map();
   for (const r of d.rutas) rutas.set(norm(r.ruta), { ruta: r.ruta, tieneLamina: !!r.tieneLamina, archivos: r.archivos || [] });
   S.biblio = { origen: "drive", raiz: d.raiz, generado: d.generado, desdeCache: !!d.desdeCache, rutas };
@@ -1017,7 +1020,7 @@ $("#iUrl").onchange = e => { ls.set("nl_url", e.target.value.trim()); syncCfg();
 $("#iTok").onchange = e => { ls.set("nl_tok", e.target.value); };
 $("#bPing").onclick = async () => {
   $("#pingRes").textContent = "Probando…";
-  try { const d = await jsonp({ accion: "ping" }, 60000); $("#pingRes").textContent = "✅ Conectado a: " + d.raiz; }
+  try { const d = await jsonp({ accion: "ping" }, 60000); $("#pingRes").textContent = "✅ Conectado a: " + d.raiz + (d.metodo ? " · " + d.metodo : ""); }
   catch (e) { $("#pingRes").textContent = "❌ " + e.message; }
 };
 $("#bCache").onclick = async () => { await idb.clear(); S.analisis.clear(); estado("Caché limpia"); render(); };
@@ -1042,7 +1045,7 @@ async function analizarPrograma() {
 $("#bLeer").onclick = async () => {
   const b = $("#bLeer"); b.disabled = true;
   try {
-    progreso("Leyendo la biblioteca en Drive… (la primera vez puede tardar hasta 1 minuto)", 0.05);
+    progreso("Leyendo la biblioteca en Drive…", 0.05);
     const refrescar = !!S.biblio && S.biblio.origen === "drive";
     S.analisis.clear();
     await cargarListado(refrescar);

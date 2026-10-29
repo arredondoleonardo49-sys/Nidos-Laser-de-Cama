@@ -80,7 +80,7 @@ tr.det>td{background:var(--bg);padding:10px}
 .iss{margin:0;padding:0;list-style:none;font-size:12.5px}
 .iss li{padding:2px 0}
 .iss li.err{color:var(--err)} .iss li.warn{color:var(--warn)}
-.chip{display:inline-block;background:var(--chip);border-radius:5px;padding:1px 6px;font-size:11.5px;margin-right:3px}
+.chip{display:inline-block;white-space:nowrap;background:var(--chip);border-radius:5px;padding:1px 6px;font-size:11.5px;margin-right:3px}
 .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
 .bar>i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
 #estado{font-size:12.5px;color:var(--muted)}
@@ -127,6 +127,11 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
     </div>
   </details>
 
+  <details class="card hide" id="capCard">
+    <summary>🗂️ Capas detectadas <span class="sub" id="capSub"></span></summary>
+    <div class="body" id="capBody"></div>
+  </details>
+
   <div id="prog" class="hide card" style="padding:10px 14px"><div id="progTxt" class="muted">…</div><div class="bar"><i id="progBar"></i></div></div>
 
   <div id="kpis" class="kpis"></div>
@@ -134,12 +139,14 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
   <div class="tabs" id="tabs">
     <button class="tab on" data-t="ops">📋 Programa <span class="n" id="nOps">0</span></button>
     <button class="tab" data-t="exp">⚖️ Explosión por calibre</button>
+    <button class="tab" data-t="con">📦 Consumo por OP</button>
     <button class="tab" data-t="pen">🛠️ Pendientes Ingeniería <span class="n" id="nPen">0</span></button>
     <button class="tab" data-t="bib">📚 Biblioteca <span class="n" id="nBib">0</span></button>
   </div>
 
   <section id="t-ops"></section>
   <section id="t-exp" class="hide"></section>
+  <section id="t-con" class="hide"></section>
   <section id="t-pen" class="hide"></section>
   <section id="t-bib" class="hide"></section>
 </main>
@@ -185,6 +192,7 @@ const S = {
   biblio: null,          // {origen, raiz, generado, rutas: Map(rutaNorm → {ruta, tieneLamina, archivos:[meta]})}
   analisis: new Map(),   // fileId → resultado
   local: new Map(),      // fileId → bytes (modo local)
+  metas: new Map(),      // fileId → meta de los archivos revisados
 };
 
 /* ============================== CACHÉ (IndexedDB) ============================== */
@@ -459,6 +467,8 @@ function claveEnt(e, pl) {
   return e.capa + "|" + e.tipo + "|" + pts.map(p => p.join(",")).join(";");
 }
 
+function rolesUsuario() { try { return JSON.parse(ls.get("nl_roles", "{}")) || {}; } catch { return {}; } }
+
 /** Analiza un DXF ya parseado contra la convención */
 function analizar(dxf) {
   const errores = [], avisos = [];
@@ -466,48 +476,52 @@ function analizar(dxf) {
   // unidades
   if (dxf.insunits === 1) add(errores, "Dibujo en pulgadas ($INSUNITS=1); debe estar en mm");
   else if (dxf.insunits != null && dxf.insunits !== 4 && dxf.insunits !== 0) add(avisos, "Unidades del dibujo no son mm ($INSUNITS=" + dxf.insunits + ")");
-  // capas
-  const usadas = new Map();
-  for (const e of dxf.ents) usadas.set(e.capa, (usadas.get(e.capa) || 0) + 1);
-  const ajenas = [...usadas.keys()].filter(c => !(c in CAPAS));
-  if (ajenas.length) add(errores, "Geometría en capa(s) no válidas: " + ajenas.map(c => `"${c}" (${usadas.get(c)})`).join(", ") + ". Solo se aceptan CORTE y MARCA");
-  if (!usadas.get("CORTE")) add(errores, "No hay geometría en la capa CORTE");
-  for (const [n, col] of Object.entries(CAPAS)) {
-    const c = dxf.capas[n];
-    if (c && usadas.get(n) && c.color !== col) add(avisos, `Capa ${n} con color ${c.color}; debe ser ${col} (${n === "CORTE" ? "verde" : "amarillo"})`);
-    if (c && c.apagada && usadas.get(n)) add(avisos, `Capa ${n} está apagada`);
-  }
-  const conColor = dxf.ents.filter(e => e.color !== 256 || e.trueColor).length;
-  if (conColor) add(avisos, `${conColor} línea(s) con color asignado directo; debe ser "por capa"`);
-  // geometría
-  const corte = [], marca = [], vistos = new Set(); let dup = 0, nCorte = 0, nMarca = 0;
-  const dibujo = { corte: [], marca: [], abiertos: [] };
+  // geometría por capa (se leen TODAS las capas; el rol de cada una se decide abajo)
+  const porCapa = new Map(), vistos = new Set(); let dup = 0;
   for (const e of dxf.ents) {
     const pl = aPolilinea(e);
     if (pl.soporte === false) {
       if (pl.ignorar) continue;
-      if (e.capa === "MARCA" && (e.tipo === "TEXT" || e.tipo === "MTEXT")) add(avisos, "Texto en MARCA como fuente; conviene convertirlo a trazos");
-      else add(errores, `${pl.motivo} en capa ${e.capa}`);
+      if (e.tipo === "TEXT" || e.tipo === "MTEXT") add(avisos, `Texto como fuente en capa "${e.capa}"; conviene convertirlo a trazos`);
+      else add(errores, `${pl.motivo} en capa "${e.capa}"`);
       continue;
     }
     const k = claveEnt(e, pl);
     if (k && vistos.has(k)) { dup++; continue; }
     if (k) vistos.add(k);
-    if (e.capa === "CORTE") { corte.push(pl); nCorte++; }
-    else { marca.push(pl); nMarca++; if (e.capa === "MARCA") dibujo.marca.push(pl); }
+    if (!porCapa.has(e.capa)) porCapa.set(e.capa, []);
+    porCapa.get(e.capa).push(pl);
   }
   if (dup) add(avisos, `${dup} entidad(es) duplicada(s) (encimadas); se marcarían/cortarían dos veces`);
-  const res = { errores, avisos, dibujo, ancho: 0, alto: 0, area: 0, perimCorte: 0, largoMarca: 0, lazos: 0, barrenos: 0 };
-  res.largoMarca = dibujo.marca.reduce((s, p) => s + largo(p.pts, p.cerrada), 0);
-  // si no hay capa CORTE válida, analizar lo que exista para poder mostrar el dibujo
-  const base = corte.length ? corte : marca;
-  const { lazos, abiertos } = encadenar(base);
-  dibujo.corte = lazos; dibujo.abiertos = abiertos;
+  // rol: lo que definas en ⚙️ Capas > nombre CORTE/MARCA > automático (la capa con el contorno cerrado más grande es corte)
+  const roles = rolesUsuario();
+  const capas = [...porCapa.entries()].map(([nombre, ents]) => {
+    const u = roles[norm(nombre)];
+    const rol = u && u !== "auto" ? u : norm(nombre) === "CORTE" ? "corte" : norm(nombre) === "MARCA" ? "marca" : null;
+    return { nombre, ents, rol, origen: u && u !== "auto" ? "manual" : rol ? "nombre" : "auto", color: dxf.capas[nombre] ? dxf.capas[nombre].color : null };
+  });
+  if (!capas.some(c => c.rol === "corte")) {
+    let mejor = null, mayor = 0;
+    for (const c of capas.filter(c => !c.rol)) {
+      const a = Math.max(0, ...encadenar(c.ents).lazos.map(q => Math.abs(areaF(q))));
+      if (a > mayor) { mayor = a; mejor = c; }
+    }
+    if (mejor) mejor.rol = "corte";
+  }
+  for (const c of capas) if (!c.rol) c.rol = "marca";
+  const corte = capas.filter(c => c.rol === "corte").flatMap(c => c.ents);
+  const dibujo = { corte: [], marca: capas.filter(c => c.rol === "marca").flatMap(c => c.ents), abiertos: [] };
+  const res = { errores, avisos, dibujo, ancho: 0, alto: 0, area: 0, perimCorte: 0, largoMarca: 0, lazos: 0, barrenos: 0,
+                capas: capas.map(c => ({ nombre: c.nombre, rol: c.rol, origen: c.origen, n: c.ents.length, color: c.color })) };
+  res.largoMarca = dibujo.marca.reduce((s, q) => s + largo(q.pts, q.cerrada), 0);
+  if (!corte.length) add(errores, "No se encontró ninguna capa con un contorno cerrado de corte");
+  const { lazos, abiertos } = encadenar(corte.length ? corte : capas.flatMap(c => c.ents));
   if (corte.length) {
-    if (abiertos.length) add(errores, `${abiertos.length} contorno(s) de corte abierto(s)`);
+    dibujo.corte = lazos; dibujo.abiertos = abiertos;
+    const nc = capas.filter(c => c.rol === "corte").map(c => `"${c.nombre}"`).join(", ");
+    if (abiertos.length) add(errores, `${abiertos.length} contorno(s) abierto(s) en la capa de corte ${nc}`);
     if (!lazos.length) add(errores, "No se forma ningún contorno cerrado de corte");
-  } else dibujo.corte = []; // se pinta como error abajo
-  if (!corte.length) { dibujo.sinCapa = lazos.concat(abiertos); }
+  } else dibujo.sinCapa = lazos.concat(abiertos);
   // bbox
   const todos = (corte.length ? lazos : (dibujo.sinCapa || [])).flat().concat(dibujo.marca.flatMap(p => p.pts));
   if (todos.length) {
@@ -618,6 +632,7 @@ async function obtenerTexto(meta) {
 
 /** Descarga y analiza una lista de archivos vigentes */
 async function analizarArchivos(metas, etiqueta) {
+  for (const m of metas) S.metas.set(m.id, m);
   const faltan = metas.filter(m => !S.analisis.has(m.id));
   let hechos = 0;
   const total = faltan.length;
@@ -714,6 +729,7 @@ function tarjetaPieza(meta, res, total) {
     <div class="pv" data-id="${esc(meta.id)}">${svgPieza(res)}</div>
     <div class="m"><span class="chip">CAL ${meta.n.cal ?? "?"}</span><span class="chip">${meta.n.pz} pz/mueble</span><span class="chip">v${meta.n.version}</span>${total != null ? `<span class="chip"><b>${fmt(total)} pz</b></span>` : ""}</div>
     <div class="m">${dims}${res.area ? ` · ${fmt(res.area * 100, 2)} dm² netos · corte ${fmt(res.perimCorte / 1000, 2)} m` : ""}${res.largoMarca ? ` · marca ${fmt(res.largoMarca / 1000, 2)} m` : ""}</div>
+    ${res.capas && res.capas.length ? `<div class="m">${res.capas.map(c => `<span class="chip" title="${c.n} entidades · ${c.origen === "auto" ? "detectado automático" : c.origen === "manual" ? "definido por ti" : "por nombre"}" style="border-left:3px solid ${c.rol === "corte" ? "var(--corte)" : c.rol === "marca" ? "var(--marca)" : "var(--muted)"}">${esc(c.nombre)} → ${c.rol === "corte" ? "corte" : c.rol === "marca" ? "marca" : "ignorada"}${c.origen === "auto" ? " ·auto" : ""}</span>`).join("")}</div>` : ""}
     ${iss ? `<ul class="iss">${iss}</ul>` : ""}
     <div class="m mono" title="${esc(meta.nombre)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(meta.nombre)}</div>
   </div>`;
@@ -824,6 +840,79 @@ function listaPendientes(filas) {
   return L.sort((a, b) => (b.prog - a.prog) || ord[a.sev] - ord[b.sev] || a.ruta.localeCompare(b.ruta));
 }
 
+
+function consumoPorOP(filas) {
+  const out = [];
+  for (const f of filas || []) {
+    const g = new Map();
+    for (const p of f.piezas) {
+      const c = p.meta.n.cal ?? "?";
+      if (!g.has(c)) g.set(c, { cal: c, piezas: 0, area: 0, sinContar: 0, dibujos: 0 });
+      const x = g.get(c); x.dibujos++;
+      if (p.res.sev === "err" || p.res.sev === "info") x.sinContar += p.total;
+      else { x.piezas += p.total; x.area += (p.res.area || 0) * p.total; }
+    }
+    for (const x of [...g.values()].sort((a, b) => (a.cal === "?") - (b.cal === "?") || a.cal - b.cal)) {
+      const t = ESPESOR[x.cal];
+      out.push({ f, ...x, kg: t ? x.area * t * DENS : 0, hojas: x.area / AREA_HOJA });
+    }
+  }
+  return out;
+}
+
+function vistaCon(filas) {
+  const el = $("#t-con");
+  if (!filas) { el.innerHTML = `<div class="card empty"><b>📦 Consumo de lámina por OP</b>Aparece al cruzar el programa con la biblioteca.</div>`; return; }
+  const C = consumoPorOP(filas);
+  if (!C.length) { el.innerHTML = `<div class="card empty"><b>Sin piezas de lámina</b>Ninguna OP del programa tiene dibujos de lámina todavía.</div>`; return; }
+  let h = `<div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Área neta m²</th><th class="num">Kg netos</th><th class="num">Láminas teóricas</th><th class="num">Kg / mueble</th><th>Notas</th></tr></thead><tbody>`;
+  let prev = null;
+  for (const x of C) {
+    const nueva = x.f !== prev; prev = x.f;
+    const span = C.filter(y => y.f === x.f).length;
+    h += `<tr${nueva ? ' style="border-top:2px solid var(--line)"' : ""}>`;
+    if (nueva) h += `<td class="mono" rowspan="${span}">${esc(x.f.op.op)}</td><td class="mono" rowspan="${span}"><b>${esc(x.f.op.ruta)}</b></td><td rowspan="${span}">${esc(x.f.op.desc)}</td><td class="num" rowspan="${span}">${fmt(x.f.op.cant)}</td>`;
+    h += `<td><span class="chip">CAL ${x.cal}</span></td><td class="num">${fmt(x.piezas)}</td><td class="num">${fmt(x.area, 3)}</td><td class="num">${fmt(x.kg, 2)}</td>
+      <td class="num"><b>${fmt(x.hojas, 3)}</b></td><td class="num">${fmt(x.kg / x.f.op.cant, 3)}</td>
+      <td class="muted">${x.sinContar ? `❌ ${fmt(x.sinContar)} pz sin contar (dibujo con error)` : ""}</td></tr>`;
+  }
+  const tA = C.reduce((s, x) => s + x.area, 0), tK = C.reduce((s, x) => s + x.kg, 0), tP = C.reduce((s, x) => s + x.piezas, 0);
+  h += `<tr style="border-top:2px solid var(--line)"><td colspan="5"><b>Total programa</b></td><td class="num"><b>${fmt(tP)}</b></td><td class="num"><b>${fmt(tA, 3)}</b></td><td class="num"><b>${fmt(tK, 2)}</b></td><td class="num"><b>${fmt(tA / AREA_HOJA, 3)}</b></td><td></td><td></td></tr></tbody></table></div>
+  <p class="note">Consumo <b>neto teórico</b>: el material que queda en las piezas (área real del contorno menos barrenos). Láminas teóricas = área ÷ ${fmt(AREA_HOJA, 3)} m² de una hoja 4×10. Con el motor de nidos se agregará el <b>consumo real</b> por OP: cada lámina se reparte entre las OPs que lleva en proporción al área de sus piezas, incluido el scrap.</p>`;
+  el.innerHTML = `<div class="toolbar"><span class="muted">Consumo neto de lámina por OP y calibre</span><span style="flex:1"></span><button id="bExpCon">⬇️ Excel</button></div>` + h;
+  $("#bExpCon").onclick = () => exportarExcel(filas, listaPendientes(filas));
+}
+
+function vistaCapas() {
+  const card = $("#capCard");
+  const vistas = new Map();
+  for (const [id, r] of S.analisis) for (const c of r.capas || []) {
+    const k = norm(c.nombre);
+    if (!vistas.has(k)) vistas.set(k, { nombre: c.nombre, archivos: 0, corte: 0, marca: 0, ignorada: 0 });
+    const v = vistas.get(k); v.archivos++; v[c.rol] = (v[c.rol] || 0) + 1;
+  }
+  if (!vistas.size) { card.classList.add("hide"); return; }
+  card.classList.remove("hide");
+  const roles = rolesUsuario();
+  $("#capSub").textContent = `${vistas.size} capa(s) en ${S.analisis.size} dibujos`;
+  let h = `<p class="note" style="margin-top:0">Se leen todas las capas de los DXF. Si no defines nada, la capa que tiene el contorno cerrado más grande se toma como <b>corte</b> y las demás como <b>marca</b> (en CypCut tú las reasignas con el mapeo). Aquí puedes fijar el rol de una capa por su nombre para todos los dibujos.</p>
+    <div class="tw"><table><thead><tr><th>Capa</th><th class="num">Dibujos</th><th>Detectada como</th><th>Rol</th></tr></thead><tbody>`;
+  for (const v of [...vistas.values()].sort((a, b) => b.archivos - a.archivos)) {
+    const k = norm(v.nombre), cur = roles[k] || "auto";
+    const det = [v.corte ? `corte en ${v.corte}` : "", v.marca ? `marca en ${v.marca}` : "", v.ignorada ? `ignorada en ${v.ignorada}` : ""].filter(Boolean).join(" · ");
+    h += `<tr><td class="mono"><b>${esc(v.nombre)}</b></td><td class="num">${v.archivos}</td><td class="muted">${det}</td>
+      <td><select data-capa="${esc(k)}" style="font:inherit;padding:4px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink)">
+      ${[["auto", "Automático"], ["corte", "Corte"], ["marca", "Marca"], ["ignorar", "Ignorar"]].map(([val, t]) => `<option value="${val}" ${val === cur ? "selected" : ""}>${t}</option>`).join("")}</select></td></tr>`;
+  }
+  $("#capBody").innerHTML = h + `</tbody></table></div>`;
+  $("#capBody").querySelectorAll("select[data-capa]").forEach(sel => sel.onchange = async () => {
+    const r = rolesUsuario(); if (sel.value === "auto") delete r[sel.dataset.capa]; else r[sel.dataset.capa] = sel.value;
+    ls.set("nl_roles", JSON.stringify(r));
+    const metas = [...S.metas.values()]; S.analisis.clear();
+    await analizarArchivos(metas, "Reaplicando capas"); render(); $("#capCard").open = true;
+  });
+}
+
 function vistaPen(filas) {
   const el = $("#t-pen");
   const L = listaPendientes(filas);
@@ -872,7 +961,7 @@ function vistaBib() {
 
 function render() {
   const filas = evaluarPrograma();
-  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaPen(filas); vistaBib();
+  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaCon(filas); vistaPen(filas); vistaBib(); vistaCapas();
   document.querySelectorAll(".pv[data-id]").forEach(d => d.onclick = () => abrirPieza(d.dataset.id));
 }
 
@@ -901,6 +990,11 @@ function exportarExcel(filas, L) {
   if (filas) {
     const ex = explosion(filas).map(g => { const t = ESPESOR[g.cal]; return { Calibre: g.cal, "Espesor mm": t || "", Piezas: g.piezas, "Área neta m²": +g.area.toFixed(4), "Kg netos": t ? +(g.area * t * DENS).toFixed(2) : "", "Láminas mín. teóricas": +(g.area / AREA_HOJA).toFixed(3), "Piezas sin contar (error)": g.errores }; });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ex.length ? ex : [{ Calibre: "Sin piezas" }]), "Explosión");
+    const con = consumoPorOP(filas).map(x => ({ OP: x.f.op.op, Ruta: x.f.op.ruta, Descripción: x.f.op.desc, Muebles: x.f.op.cant, Calibre: x.cal, Piezas: x.piezas,
+      "Área neta m²": +x.area.toFixed(4), "Kg netos": +x.kg.toFixed(3), "Láminas teóricas": +x.hojas.toFixed(4), "Kg por mueble": +(x.kg / x.f.op.cant).toFixed(4), "Piezas sin contar (error)": x.sinContar }));
+    const wsC = XLSX.utils.json_to_sheet(con.length ? con : [{ OP: "Sin piezas de lámina" }]);
+    wsC["!cols"] = [{ wch: 13 }, { wch: 12 }, { wch: 36 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, wsC, "Consumo por OP");
     const det = [];
     for (const f of filas) {
       if (!f.piezas.length) det.push({ OP: f.op.op, Ruta: f.op.ruta, Descripción: f.op.desc, Muebles: f.op.cant, Pieza: "", Calibre: "", "Pz/mueble": "", "Piezas totales": "", Estado: f.etiqueta, Archivo: "" });
@@ -977,7 +1071,7 @@ $("#fLocal").onchange = async e => {
 
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  for (const s of ["ops", "exp", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== t.dataset.t);
+  for (const s of ["ops", "exp", "con", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== t.dataset.t);
   ls.set("nl_tab", t.dataset.t);
 });
 $("#bTema").onclick = () => {

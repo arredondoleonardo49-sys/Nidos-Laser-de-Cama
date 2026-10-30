@@ -982,31 +982,193 @@ function abrirPieza(id) {
 }
 
 /* ============================== EXPORTAR ============================== */
-function exportarExcel(filas, L) {
-  if (typeof XLSX === "undefined") return alert("No se cargó la librería de Excel");
-  const wb = XLSX.utils.book_new();
-  const sevT = { err: "Error", warn: "Aviso", info: "Falta dibujo" };
-  const p = L.map(x => ({ Severidad: sevT[x.sev], Ruta: x.ruta, "En programa": x.prog ? "Sí" : "No", Archivo: x.archivo, Problema: x.txt }));
-  const ws1 = XLSX.utils.json_to_sheet(p.length ? p : [{ Severidad: "", Ruta: "", "En programa": "", Archivo: "", Problema: "Sin pendientes" }]);
-  ws1["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 62 }, { wch: 80 }];
-  XLSX.utils.book_append_sheet(wb, ws1, "Pendientes");
-  if (filas) {
-    const ex = explosion(filas).map(g => { const t = ESPESOR[g.cal]; return { Calibre: g.cal, "Espesor mm": t || "", Piezas: g.piezas, "Área neta m²": +g.area.toFixed(4), "Kg netos": t ? +(g.area * t * DENS).toFixed(2) : "", "Láminas mín. teóricas": +(g.area / AREA_HOJA).toFixed(3), "Piezas sin contar (error)": g.errores }; });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ex.length ? ex : [{ Calibre: "Sin piezas" }]), "Explosión");
-    const con = consumoPorOP(filas).map(x => ({ OP: x.f.op.op, Ruta: x.f.op.ruta, Descripción: x.f.op.desc, Muebles: x.f.op.cant, Calibre: x.cal, Piezas: x.piezas,
-      "Área neta m²": +x.area.toFixed(4), "Kg netos": +x.kg.toFixed(3), "Láminas teóricas": +x.hojas.toFixed(4), "Kg por mueble": +(x.kg / x.f.op.cant).toFixed(4), "Piezas sin contar (error)": x.sinContar }));
-    const wsC = XLSX.utils.json_to_sheet(con.length ? con : [{ OP: "Sin piezas de lámina" }]);
-    wsC["!cols"] = [{ wch: 13 }, { wch: 12 }, { wch: 36 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 22 }];
-    XLSX.utils.book_append_sheet(wb, wsC, "Consumo por OP");
-    const det = [];
-    for (const f of filas) {
-      if (!f.piezas.length) det.push({ OP: f.op.op, Ruta: f.op.ruta, Descripción: f.op.desc, Muebles: f.op.cant, Pieza: "", Calibre: "", "Pz/mueble": "", "Piezas totales": "", Estado: f.etiqueta, Archivo: "" });
-      for (const q of f.piezas) det.push({ OP: f.op.op, Ruta: f.op.ruta, Descripción: f.op.desc, Muebles: f.op.cant, Pieza: q.meta.n.pieza, Calibre: q.meta.n.cal, "Pz/mueble": q.meta.n.pz, "Piezas totales": q.total, Estado: { ok: "OK", warn: "Aviso", err: "Error", info: "Sin validar" }[q.res.sev], Archivo: q.meta.nombre });
-    }
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(det), "Detalle por OP");
+const EXCELJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+function cargarExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  return new Promise((res, rej) => {
+    const sc = document.createElement("script"); sc.src = EXCELJS_URL;
+    sc.onload = () => window.ExcelJS ? res(window.ExcelJS) : rej(new Error("No se cargó ExcelJS"));
+    sc.onerror = () => rej(new Error("No se pudo cargar la librería de Excel (revisa la conexión a internet)"));
+    document.head.appendChild(sc);
+  });
+}
+
+/** Acción sugerida para Ingeniería según el problema */
+function accionSugerida(txt) {
+  const t = norm(txt);
+  const R = [
+    [/ABIERTO/, "Cerrar el contorno: unir los extremos sueltos (las líneas deben tocarse) y subir nueva versión"],
+    [/DUPLICAD|ENCIMAD/, "Borrar las líneas encimadas (OVERKILL en AutoCAD) y subir nueva versión"],
+    [/EXTERIORES INDEPENDIENTES/, "Dejar una sola pieza por archivo; separar las demás en archivos propios"],
+    [/NO CABE/, "Revisar escala/unidades del dibujo; la pieza excede la lámina 4×10"],
+    [/PULGADAS|UNIDADES/, "Exportar el DXF en milímetros"],
+    [/NINGUNA CAPA|CONTORNO CERRADO/, "Revisar que el contorno exterior esté completo y cerrado"],
+    [/TEXTO/, "Convertir el texto a trazos (explotar) o eliminarlo"],
+    [/BLOQUE|INSERT/, "Explotar los bloques (EXPLODE) antes de exportar"],
+    [/COTA/, "Eliminar cotas y anotaciones del DXF de corte"],
+    [/ACHURADO|HATCH/, "Eliminar achurados del DXF de corte"],
+    [/FUERA DEL RANGO/, "Confirmar el calibre: el láser de cama corta cal 12 a 24"],
+    [/SIN CALIBRE/, "Agregar CALxx al nombre del archivo"],
+    [/ARCHIVOS V\d|FECHA MAS RECIENTE/, "Renombrar el archivo correcto a la siguiente versión (v2, v3…) y conservar el anterior como respaldo"],
+    [/EMPIEZA CON/, "Corregir el prefijo del nombre o mover el archivo a la carpeta de su ruta"],
+    [/SIN NUMERO DE VERSION/, "Agregar la versión al nombre: … vN (AAAA-MM-DD).dxf"],
+    [/CONVENCION/, "Renombrar: RUTA_NPZAS_LAMINA_CALxx_PIEZA vN (AAAA-MM-DD).dxf"],
+    [/MATERIAL/, "Mover el archivo a la carpeta de su material"],
+    [/NO TIENE CARPETA|NO TIENE DIBUJOS/, "Subir los DXF de lámina de esta ruta o confirmar que no lleva piezas de láser de cama"],
+    [/DESCARGAR|LEER EL DXF/, "Revisar que el archivo abra en AutoCAD y volver a subirlo"],
+  ];
+  const m = R.find(([rx]) => rx.test(t));
+  return m ? m[1] : "Revisar el dibujo";
+}
+
+async function exportarExcel(filas, L) {
+  let ExcelJS;
+  try { ExcelJS = await cargarExcelJS(); } catch (e) { return alert(e.message); }
+  const C = { verde: "FF2F7D32", verdeCl: "FFE6F2E4", rojo: "FFB3261E", rojoCl: "FFFBE5E2", ambar: "FF9A6A00", ambarCl: "FFFBF1D6",
+              gris: "FF55606B", grisCl: "FFECEFF1", linea: "FFD6DAD2", banda: "FFF6F7F4", blanco: "FFFFFFFF", tinta: "FF1C1F1A" };
+  const wb = new ExcelJS.Workbook(); wb.creator = "Nidos Láser de Cama"; wb.created = new Date();
+  const ahora = new Date(), fechaTxt = ahora.toLocaleString("es-MX", { dateStyle: "long", timeStyle: "short" });
+  const borde = { top: { style: "thin", color: { argb: C.linea } }, bottom: { style: "thin", color: { argb: C.linea } }, left: { style: "thin", color: { argb: C.linea } }, right: { style: "thin", color: { argb: C.linea } } };
+  const fill = argb => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+
+  /** Hoja con título, subtítulo, encabezado con filtro y paneles fijos */
+  function hoja(nombre, titulo, cols, color = C.verde) {
+    const ws = wb.addWorksheet(nombre, { views: [{ state: "frozen", ySplit: 4, showGridLines: false }], properties: { tabColor: { argb: color } },
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .4, right: .4, top: .5, bottom: .5, header: .2, footer: .2 } } });
+    ws.columns = cols.map(c => ({ key: c.k, width: c.w }));
+    ws.mergeCells(1, 1, 1, cols.length);
+    Object.assign(ws.getCell(1, 1), { value: titulo });
+    ws.getCell(1, 1).font = { bold: true, size: 15, color: { argb: C.tinta } };
+    ws.getRow(1).height = 24;
+    ws.mergeCells(2, 1, 2, cols.length);
+    ws.getCell(2, 1).value = `Generado ${fechaTxt}${S.programa ? " · Programa: " + S.programa.nombre : ""}${S.biblio ? " · Biblioteca: " + S.biblio.raiz : ""}`;
+    ws.getCell(2, 1).font = { size: 9, italic: true, color: { argb: C.gris } };
+    const h = ws.getRow(4);
+    cols.forEach((c, i) => {
+      const cell = h.getCell(i + 1); cell.value = c.t;
+      cell.font = { bold: true, color: { argb: C.blanco }, size: 10 }; cell.fill = fill(color); cell.border = borde;
+      cell.alignment = { vertical: "middle", horizontal: c.num ? "right" : "left", wrapText: true };
+    });
+    h.height = 30;
+    ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: cols.length } };
+    ws.headerFooter.oddFooter = "&L" + titulo + "&RPágina &P de &N";
+    ws.pageSetup.printTitlesRow = "4:4";
+    return ws;
   }
-  const hoy = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `Validacion_biblioteca_laser_${hoy}.xlsx`);
+  function filaDatos(ws, valores, cols, opts = {}) {
+    const r = ws.addRow(valores);
+    r.eachCell({ includeEmpty: true }, (cell, i) => {
+      const c = cols[i - 1]; if (!c) return;
+      cell.border = borde; cell.font = { size: 10, color: { argb: C.tinta }, ...(c.mono ? { name: "Consolas" } : {}), ...(opts.bold ? { bold: true } : {}) };
+      cell.alignment = { vertical: "top", horizontal: c.num ? "right" : c.centro ? "center" : "left", wrapText: !!c.wrap };
+      if (c.fmt) cell.numFmt = c.fmt;
+      if (opts.banda) cell.fill = fill(C.banda);
+      if (opts.fondo) cell.fill = fill(opts.fondo);
+    });
+    return r;
+  }
+
+  /* ---------- Resumen ---------- */
+  const sevInfo = { err: ["❌ Error", C.rojo, C.rojoCl, "Bloquea el anidado: corregir antes de producir"], warn: ["⚠️ Aviso", C.ambar, C.ambarCl, "Se puede anidar, pero conviene corregir"], info: ["📂 Falta dibujo", C.gris, C.grisCl, "La ruta del programa no tiene DXF de lámina"] };
+  const res = wb.addWorksheet("Resumen", { views: [{ showGridLines: false }], properties: { tabColor: { argb: C.verde } },
+    pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .5, right: .5, top: .5, bottom: .5, header: .2, footer: .2 } } });
+  res.columns = [{ width: 22 }, { width: 14 }, { width: 14 }, { width: 58 }];
+  res.mergeCells("A1:D1"); res.getCell("A1").value = "Pendientes de la biblioteca de corte · Láser de cama"; res.getCell("A1").font = { bold: true, size: 16 };
+  res.mergeCells("A2:D2"); res.getCell("A2").value = `Generado ${fechaTxt}`; res.getCell("A2").font = { size: 9, italic: true, color: { argb: C.gris } };
+  let rr = 4;
+  const kv = (k, v) => { res.getCell(rr, 1).value = k; res.getCell(rr, 1).font = { bold: true, size: 10 }; res.getCell(rr, 2).value = v; res.getCell(rr, 2).font = { size: 10 }; res.mergeCells(rr, 2, rr, 4); rr++; };
+  kv("Programa", S.programa ? `${S.programa.nombre} · ${S.programa.ops.length} OPs` : "—");
+  kv("Biblioteca", S.biblio ? S.biblio.raiz : "—");
+  rr++;
+  ["Severidad", "En programa", "Total", "Qué significa"].forEach((t, i) => { const c = res.getCell(rr, i + 1); c.value = t; c.font = { bold: true, color: { argb: C.blanco } }; c.fill = fill(C.verde); c.border = borde; });
+  rr++;
+  for (const k of ["err", "warn", "info"]) {
+    const [t, col, cl, desc] = sevInfo[k];
+    const vals = [t, L.filter(x => x.sev === k && x.prog).length, L.filter(x => x.sev === k).length, desc];
+    vals.forEach((v, i) => { const c = res.getCell(rr, i + 1); c.value = v; c.border = borde; c.font = { size: 10, bold: i === 0, color: { argb: i === 0 ? col : C.tinta } }; c.fill = fill(cl); c.alignment = { horizontal: i === 1 || i === 2 ? "center" : "left", vertical: "middle", wrapText: i === 3 }; });
+    rr++;
+  }
+  rr++;
+  const porRuta = new Map();
+  for (const x of L) { if (!porRuta.has(x.ruta)) porRuta.set(x.ruta, { ruta: x.ruta, err: 0, warn: 0, info: 0, prog: x.prog }); porRuta.get(x.ruta)[x.sev]++; }
+  const rutasOrd = [...porRuta.values()].sort((a, b) => (b.prog - a.prog) || (b.err - a.err) || (b.warn - a.warn) || a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
+  res.getCell(rr, 1).value = "Rutas con pendientes (primero las del programa)"; res.getCell(rr, 1).font = { bold: true, size: 12 }; rr++;
+  ["Ruta", "❌ Errores", "⚠️ Avisos", "En programa"].forEach((t, i) => { const c = res.getCell(rr, i + 1); c.value = t; c.font = { bold: true, color: { argb: C.blanco } }; c.fill = fill(C.verde); c.border = borde; c.alignment = { horizontal: i ? "center" : "left" }; });
+  rr++;
+  for (const r of rutasOrd.filter(r => r.err || r.warn)) {
+    [r.ruta, r.err || "", r.warn || "", r.prog ? "Sí" : "No"].forEach((v, i) => { const c = res.getCell(rr, i + 1); c.value = v; c.border = borde; c.font = { size: 10, name: i === 0 ? "Consolas" : undefined, bold: i === 0, color: { argb: i === 1 && v ? C.rojo : i === 2 && v ? C.ambar : C.tinta } }; c.alignment = { horizontal: i ? "center" : "left" }; if (r.prog) c.fill = fill(C.verdeCl); });
+    rr++;
+  }
+  if (!rutasOrd.some(r => r.err || r.warn)) { res.getCell(rr, 1).value = "✅ Sin errores ni avisos en los dibujos revisados"; rr++; }
+
+  /* ---------- Pendientes ---------- */
+  const colsP = [{ k: "n", t: "#", w: 5, centro: true }, { k: "sev", t: "Severidad", w: 14 }, { k: "ruta", t: "Ruta", w: 20, mono: true }, { k: "prog", t: "En programa", w: 10, centro: true },
+    { k: "pieza", t: "Pieza / mueble", w: 30 }, { k: "cal", t: "Cal.", w: 6, centro: true }, { k: "ver", t: "Ver.", w: 6, centro: true },
+    { k: "prob", t: "Problema detectado", w: 52, wrap: true }, { k: "acc", t: "Qué hacer", w: 50, wrap: true }, { k: "arch", t: "Archivo", w: 58, wrap: true, mono: true }];
+  const wsP = hoja("Pendientes", "Pendientes para Ingeniería · DXF de lámina", colsP);
+  if (!L.length) filaDatos(wsP, { n: "", sev: "✅", prob: "Sin pendientes: todos los dibujos revisados cumplen" }, colsP);
+  let rutaPrev = null, banda = false;
+  L.forEach((x, i) => {
+    if (x.ruta !== rutaPrev) { banda = !banda; rutaPrev = x.ruta; }
+    const n = x.archivo ? leerNombre(x.archivo) : null;
+    const r = filaDatos(wsP, { n: i + 1, sev: sevInfo[x.sev][0], ruta: x.ruta, prog: x.prog ? "Sí" : "No", pieza: n ? n.pieza : (x.desc || ""), cal: n && n.cal != null ? n.cal : "",
+      ver: n && n.version != null ? "v" + n.version : "", prob: x.txt, acc: accionSugerida(x.txt), arch: x.archivo }, colsP, { banda });
+    const cs = r.getCell("sev"); cs.fill = fill(sevInfo[x.sev][2]); cs.font = { bold: true, size: 10, color: { argb: sevInfo[x.sev][1] } };
+    if (x.prog) { const cp = r.getCell("prog"); cp.font = { bold: true, size: 10, color: { argb: C.verde } }; }
+    r.getCell("arch").font = { name: "Consolas", size: 8.5, color: { argb: C.gris } };
+  });
+
+  if (filas) {
+    /* ---------- Consumo por OP ---------- */
+    const colsC = [{ k: "op", t: "OP", w: 13, mono: true }, { k: "ruta", t: "Ruta", w: 13, mono: true }, { k: "desc", t: "Descripción", w: 38, wrap: true }, { k: "cant", t: "Muebles", w: 9, num: true, fmt: "#,##0" },
+      { k: "cal", t: "Calibre", w: 8, centro: true }, { k: "pz", t: "Piezas", w: 9, num: true, fmt: "#,##0" }, { k: "area", t: "Área neta m²", w: 12, num: true, fmt: "#,##0.000" },
+      { k: "kg", t: "Kg netos", w: 11, num: true, fmt: "#,##0.00" }, { k: "hojas", t: "Láminas teóricas", w: 12, num: true, fmt: "0.000" }, { k: "kgm", t: "Kg por mueble", w: 11, num: true, fmt: "0.000" }, { k: "nota", t: "Notas", w: 30, wrap: true }];
+    const wsC = hoja("Consumo por OP", "Consumo neto de lámina por OP", colsC);
+    const CON = consumoPorOP(filas); let prevF = null; banda = false;
+    for (const x of CON) {
+      if (x.f !== prevF) { banda = !banda; prevF = x.f; }
+      filaDatos(wsC, { op: x.f.op.op, ruta: x.f.op.ruta, desc: x.f.op.desc, cant: x.f.op.cant, cal: x.cal, pz: x.piezas, area: x.area, kg: x.kg, hojas: x.hojas, kgm: x.kg / x.f.op.cant,
+        nota: x.sinContar ? `${x.sinContar} pz sin contar (dibujo con error)` : "" }, colsC, { banda });
+    }
+    if (CON.length) {
+      const a = 5, b = 4 + CON.length;
+      const t = filaDatos(wsC, { op: "TOTAL", pz: { formula: `SUBTOTAL(9,F${a}:F${b})` }, area: { formula: `SUBTOTAL(9,G${a}:G${b})` }, kg: { formula: `SUBTOTAL(9,H${a}:H${b})` }, hojas: { formula: `SUBTOTAL(9,I${a}:I${b})` } }, colsC, { bold: true, fondo: C.verdeCl });
+      t.getCell("op").font = { bold: true, size: 10 };
+    } else filaDatos(wsC, { op: "Sin piezas de lámina en el programa" }, colsC);
+
+    /* ---------- Explosión ---------- */
+    const colsE = [{ k: "cal", t: "Calibre", w: 9, centro: true }, { k: "esp", t: "Espesor mm", w: 11, num: true, fmt: "0.00" }, { k: "ops", t: "OPs", w: 7, num: true }, { k: "dib", t: "Dibujos", w: 9, num: true },
+      { k: "pz", t: "Piezas", w: 9, num: true, fmt: "#,##0" }, { k: "area", t: "Área neta m²", w: 13, num: true, fmt: "#,##0.000" }, { k: "kg", t: "Kg netos", w: 11, num: true, fmt: "#,##0.00" },
+      { k: "hojas", t: "Láminas mín. teóricas", w: 14, num: true, fmt: "0.000" }, { k: "mc", t: "Metros de corte", w: 12, num: true, fmt: "#,##0.0" }, { k: "err", t: "Piezas sin contar (error)", w: 14, num: true }];
+    const wsE = hoja("Explosión", "Explosión de lámina por calibre (mínimo teórico)", colsE);
+    const EX = explosion(filas);
+    EX.forEach((g, i) => { const t = ESPESOR[g.cal]; filaDatos(wsE, { cal: g.cal, esp: t || "", ops: g.ops.size, dib: g.refs.size, pz: g.piezas, area: g.area, kg: t ? g.area * t * DENS : "", hojas: g.area / AREA_HOJA, mc: g.corte / 1000, err: g.errores || "" }, colsE, { banda: i % 2 === 1 }); });
+    if (EX.length) { const a = 5, b = 4 + EX.length; filaDatos(wsE, { cal: "TOTAL", pz: { formula: `SUBTOTAL(9,E${a}:E${b})` }, area: { formula: `SUBTOTAL(9,F${a}:F${b})` }, kg: { formula: `SUBTOTAL(9,G${a}:G${b})` }, hojas: { formula: `SUBTOTAL(9,H${a}:H${b})` }, mc: { formula: `SUBTOTAL(9,I${a}:I${b})` } }, colsE, { bold: true, fondo: C.verdeCl }); }
+
+    /* ---------- Detalle por OP ---------- */
+    const colsD = [{ k: "op", t: "OP", w: 13, mono: true }, { k: "ruta", t: "Ruta", w: 13, mono: true }, { k: "desc", t: "Descripción", w: 36, wrap: true }, { k: "cant", t: "Muebles", w: 9, num: true },
+      { k: "pieza", t: "Pieza", w: 26 }, { k: "cal", t: "Calibre", w: 8, centro: true }, { k: "pzm", t: "Pz/mueble", w: 10, num: true }, { k: "tot", t: "Piezas totales", w: 11, num: true, fmt: "#,##0" },
+      { k: "est", t: "Estado", w: 18 }, { k: "arch", t: "Archivo", w: 58, mono: true, wrap: true }];
+    const wsD = hoja("Detalle por OP", "Detalle de piezas por OP", colsD);
+    const estC = { OK: [C.verde, C.verdeCl], Aviso: [C.ambar, C.ambarCl], Error: [C.rojo, C.rojoCl] };
+    prevF = null; banda = false;
+    for (const f of filas) {
+      banda = !banda;
+      const filasOp = f.piezas.length ? f.piezas.map(q => ({ pieza: q.meta.n.pieza, cal: q.meta.n.cal, pzm: q.meta.n.pz, tot: q.total, est: { ok: "OK", warn: "Aviso", err: "Error", info: "Sin validar" }[q.res.sev], arch: q.meta.nombre }))
+                                        : [{ est: f.etiqueta }];
+      for (const d of filasOp) {
+        const r = filaDatos(wsD, { op: f.op.op, ruta: f.op.ruta, desc: f.op.desc, cant: f.op.cant, ...d }, colsD, { banda });
+        const e = estC[d.est]; if (e) { r.getCell("est").font = { bold: true, size: 10, color: { argb: e[0] } }; r.getCell("est").fill = fill(e[1]); }
+        else r.getCell("est").font = { size: 10, italic: true, color: { argb: C.gris } };
+        r.getCell("arch").font = { name: "Consolas", size: 8.5, color: { argb: C.gris } };
+      }
+    }
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const a = document.createElement("a"); a.href = url; a.download = `Pendientes_Ingenieria_laser_${ahora.toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 /* ============================== EVENTOS ============================== */

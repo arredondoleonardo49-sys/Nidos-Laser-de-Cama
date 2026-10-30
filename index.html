@@ -97,6 +97,15 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .hide{display:none!important}
 .note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.params{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.params label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+.params input,.params select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:110px}
+.hoja{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.hoja .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.hoja svg{width:100%;height:auto;display:block;background:var(--bg);border-radius:6px}
+.ops{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px}
+.ops span{display:inline-flex;align-items:center;gap:5px;background:var(--chip);border-radius:5px;padding:2px 7px}
+.ops i{width:10px;height:10px;border-radius:2px;display:inline-block}
 </style>
 </head>
 <body>
@@ -139,6 +148,7 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
   <div class="tabs" id="tabs">
     <button class="tab on" data-t="ops">📋 Programa <span class="n" id="nOps">0</span></button>
     <button class="tab" data-t="exp">⚖️ Explosión por calibre</button>
+    <button class="tab" data-t="nid">🧩 Nidos <span class="n" id="nNid">0</span></button>
     <button class="tab" data-t="con">📦 Consumo por OP</button>
     <button class="tab" data-t="pen">🛠️ Pendientes Ingeniería <span class="n" id="nPen">0</span></button>
     <button class="tab" data-t="bib">📚 Biblioteca <span class="n" id="nBib">0</span></button>
@@ -146,10 +156,204 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
 
   <section id="t-ops"></section>
   <section id="t-exp" class="hide"></section>
+  <section id="t-nid" class="hide"></section>
   <section id="t-con" class="hide"></section>
   <section id="t-pen" class="hide"></section>
   <section id="t-bib" class="hide"></section>
 </main>
+
+<script id="motorSrc" type="text/plain">
+/* ===== MOTOR DE NIDOS (forma real, rasterizado conservador) =====
+ * Entrada: { piezas:[{key, loops:[[[x,y],...],...], area, inst:[...]}], params:{L, A, margen, sep, res, giro, K} }
+ * Salida : { hojas:[{pl:[{s, rot, x, y, inst}], extX}], formas:[{rot:[{mn:[x,y], w, h}|null]}], sinColocar:[...] , params }
+ * Garantías: cada pieza queda dentro de la lámina menos el margen, y la distancia entre
+ * dos piezas es ≥ separación (las celdas cubren por completo al contorno real).
+ */
+function anidar(D, prog) {
+  const P = D.params;
+  const r = P.res, m = P.margen, K = P.K || 4;
+  const d = Math.max(1, Math.ceil(P.sep / r - 1e-9));         // celdas de separación
+  const W = Math.floor((P.L - 2 * m) / r + 1e-9), H = Math.floor((P.A - 2 * m) / r + 1e-9);
+  const Wp = W + 2 * d, Hp = H + 2 * d;
+  const rots = P.giro ? [0, 1, 2, 3] : [0];
+  const t0 = Date.now();
+
+  /* ---------- rasterizado ---------- */
+  const rotPt = (k, p) => k === 0 ? [p[0], p[1]] : k === 1 ? [-p[1], p[0]] : k === 2 ? [-p[0], -p[1]] : [p[1], -p[0]];
+  function raster(loops) {
+    let mx = 0, my = 0;
+    for (const L of loops) for (const p of L) { if (p[0] > mx) mx = p[0]; if (p[1] > my) my = p[1]; }
+    const w = Math.max(1, Math.ceil(mx / r - 1e-9)), h = Math.max(1, Math.ceil(my / r - 1e-9));
+    const g = new Uint8Array(w * h);
+    const cx = x => Math.min(w - 1, Math.max(0, Math.floor(x / r)));
+    const fila = Array.from({ length: h }, () => []);
+    const E = [];
+    for (const L of loops) for (let i = 0; i < L.length; i++) {
+      const a = L[i], b = L[(i + 1) % L.length];
+      const e = [a[0], a[1], b[0], b[1]]; E.push(e);
+      const j0 = Math.min(h - 1, Math.max(0, Math.floor(Math.min(a[1], b[1]) / r))), j1 = Math.min(h - 1, Math.max(0, Math.floor(Math.max(a[1], b[1]) / r)));
+      for (let j = j0; j <= j1; j++) fila[j].push(e);
+    }
+    const marca = (j, xa, xb) => { const i0 = cx(Math.min(xa, xb)), i1 = cx(Math.max(xa, xb)), o = j * w; for (let i = i0; i <= i1; i++) g[o + i] = 1; };
+    const xs = [];
+    for (let j = 0; j < h; j++) {
+      const y0 = j * r, y1 = y0 + r, es = fila[j];
+      for (const [xa, ya, xb, yb] of es) {           // bordes dentro de la franja
+        if (ya === yb) { marca(j, xa, xb); continue; }
+        const ta = Math.max(0, Math.min(1, (y0 - ya) / (yb - ya))), tb = Math.max(0, Math.min(1, (y1 - ya) / (yb - ya)));
+        marca(j, xa + (xb - xa) * ta, xa + (xb - xa) * tb);
+      }
+      for (let s = 0; s < 3; s++) {                    // relleno par-impar
+        const y = y0 + r * (s + 0.5) / 3; xs.length = 0;
+        for (const [xa, ya, xb, yb] of es) if ((ya <= y && y < yb) || (yb <= y && y < ya)) xs.push(xa + (y - ya) * (xb - xa) / (yb - ya));
+        xs.sort((a, b) => a - b);
+        for (let k = 0; k + 1 < xs.length; k += 2) marca(j, xs[k], xs[k + 1]);
+      }
+    }
+    return { w, h, g };
+  }
+  function dilatar(R, k) {
+    const w2 = R.w + 2 * k, h2 = R.h + 2 * k, t = new Uint8Array(w2 * R.h), g = new Uint8Array(w2 * h2);
+    for (let j = 0; j < R.h; j++) for (let i = 0; i < R.w; i++) if (R.g[j * R.w + i]) { const o = j * w2 + i; for (let q = 0; q <= 2 * k; q++) t[o + q] = 1; }
+    for (let j = 0; j < R.h; j++) for (let i = 0; i < w2; i++) if (t[j * w2 + i]) for (let q = 0; q <= 2 * k; q++) g[(j + q) * w2 + i] = 1;
+    return { w: w2, h: h2, g };
+  }
+  function reducir(R, k) {
+    const w = Math.ceil(R.w / k), h = Math.ceil(R.h / k), g = new Uint8Array(w * h);
+    for (let j = 0; j < R.h; j++) for (let i = 0; i < R.w; i++) if (R.g[j * R.w + i]) g[((j / k) | 0) * w + ((i / k) | 0)] = 1;
+    return { w, h, g };
+  }
+  function empacar(R) {
+    const nw = (R.w >> 5) + 2, b = new Uint32Array(R.h * nw);
+    for (let j = 0; j < R.h; j++) for (let i = 0; i < R.w; i++) if (R.g[j * R.w + i]) b[j * nw + (i >> 5)] |= 1 << (i & 31);
+    return { w: R.w, h: R.h, nw, b };
+  }
+  function cabe(occ, onw, M, px, py) {
+    const s = px & 31, w0 = px >> 5, mb = M.b, mnw = M.nw;
+    for (let i = 0; i < M.h; i++) {
+      const base = (py + i) * onw + w0, mo = i * mnw;
+      let prev = 0;
+      for (let k = 0; k < mnw; k++) {
+        const cur = mb[mo + k];
+        const v = s ? ((cur << s) | (prev >>> (32 - s))) : cur;
+        if (v && (v & occ[base + k])) return false;
+        prev = cur;
+      }
+    }
+    return true;
+  }
+
+  /* ---------- preparar formas ---------- */
+  const formas = D.piezas.map((pz, si) => {
+    const rot = [];
+    for (const k of rots) {
+      const loops = pz.loops.map(L => L.map(p => rotPt(k, p)));
+      let mnx = Infinity, mny = Infinity;
+      for (const L of loops) for (const p of L) { if (p[0] < mnx) mnx = p[0]; if (p[1] < mny) mny = p[1]; }
+      const norm = loops.map(L => L.map(p => [p[0] - mnx, p[1] - mny]));
+      const cov = raster(norm);
+      if (cov.w > W || cov.h > H) { rot[k] = null; continue; }
+      const tst = dilatar(cov, d);
+      rot[k] = { mn: [mnx, mny], w: cov.w, h: cov.h, cov, fino: empacar(tst), grueso: empacar(reducir(tst, K)), celdas: cov.g.reduce((a, b) => a + b, 0) };
+    }
+    // eliminar giros equivalentes (misma huella) para acelerar
+    const vistos = [];
+    for (const k of rots) {
+      const R = rot[k]; if (!R) continue;
+      const firma = R.w + "x" + R.h + ":" + R.celdas;
+      if (vistos.some(v => v.f === firma && v.R.cov.g.every((x, i) => x === R.cov.g[i]))) rot[k] = { ...R, duplicado: true };
+      else vistos.push({ f: firma, R });
+    }
+    return { rot, area: pz.area, key: pz.key };
+  });
+
+  /* ---------- lámina ---------- */
+  const onw = (Wp >> 5) + 3, Wc = Math.ceil(Wp / K), Hc = Math.ceil(Hp / K), cnw = (Wc >> 5) + 3;
+  function nuevaHoja() { return { occ: new Uint32Array(Hp * onw), occC: new Uint32Array(Hc * cnw), pl: [], extX: 0, cache: new Map(), area: 0 }; }
+  function colocar(Hj, si, k, px, py) {
+    const R = formas[si].rot[k], c = R.cov;
+    for (let j = 0; j < c.h; j++) for (let i = 0; i < c.w; i++) if (c.g[j * c.w + i]) {
+      const X = px + d + i, Y = py + d + j;
+      Hj.occ[Y * onw + (X >> 5)] |= 1 << (X & 31);
+      const Xc = (X / K) | 0, Yc = (Y / K) | 0;
+      Hj.occC[Yc * cnw + (Xc >> 5)] |= 1 << (Xc & 31);
+    }
+    if (px + c.w > Hj.extX) Hj.extX = px + c.w;
+  }
+  function buscar(Hj, si, k) {
+    const R = formas[si].rot[k]; if (!R || R.duplicado) return null;
+    const ck = si + ":" + k; let st = Hj.cache.get(ck);
+    if (st === -1) return null;
+    const Xmax = Math.floor((W - R.w) / K), Ymax = Math.floor((H - R.h) / K);
+    let X0 = st ? st[0] : 0, Y0 = st ? st[1] : 0;
+    for (let X = X0; X <= Xmax; X++) {
+      for (let Y = X === X0 ? Y0 : 0; Y <= Ymax; Y++) {
+        if (!cabe(Hj.occC, cnw, R.grueso, X, Y)) continue;
+        Hj.cache.set(ck, [X, Y]);
+        let px = X * K, py = Y * K, mov = true;          // compactar a la izquierda / abajo en fino
+        while (mov) {
+          mov = false;
+          while (px > 0 && cabe(Hj.occ, onw, R.fino, px - 1, py)) { px--; mov = true; }
+          while (py > 0 && cabe(Hj.occ, onw, R.fino, px, py - 1)) { py--; mov = true; }
+        }
+        return { px, py, k };
+      }
+    }
+    Hj.cache.set(ck, -1);
+    return null;
+  }
+
+  /* ---------- una corrida con un orden dado ---------- */
+  function corrida(orden, etiqueta, frac0, frac1) {
+    const hojas = [], sinColocar = [];
+    orden.forEach((it, n) => {
+      if (n % 5 === 0 && prog) prog(frac0 + (frac1 - frac0) * n / orden.length, etiqueta);
+      const F = formas[it.s];
+      if (!F.rot.some(R => R)) { sinColocar.push(it); return; }
+      let ok = false;
+      for (let h = 0; h <= hojas.length && !ok; h++) {
+        if (h === hojas.length) hojas.push(nuevaHoja());
+        const Hj = hojas[h]; let mejor = null;
+        for (const k of rots) {
+          const c = buscar(Hj, it.s, k); if (!c) continue;
+          const R = F.rot[k], sc = (c.px + R.w) * 1e6 + c.py;
+          if (!mejor || sc < mejor.sc) mejor = { ...c, sc };
+        }
+        if (mejor) { colocar(Hj, it.s, mejor.k, mejor.px, mejor.py); Hj.pl.push({ s: it.s, rot: mejor.k, px: mejor.px, py: mejor.py, inst: it.inst }); Hj.area += F.area; ok = true; }
+        else if (h === hojas.length - 1 && !Hj.pl.length) { hojas.pop(); sinColocar.push(it); ok = true; }
+      }
+    });
+    return { hojas, sinColocar };
+  }
+
+  const items = [];
+  D.piezas.forEach((pz, s) => pz.inst.forEach(inst => items.push({ s, inst })));
+  const metr = s => { const R = formas[s].rot.find(x => x); return R ? { a: formas[s].area, l: Math.max(R.w, R.h), b: R.w * R.h } : { a: 0, l: 0, b: 0 }; };
+  const M = formas.map((_, s) => metr(s));
+  const ordenes = [
+    ["área", (a, b) => M[b.s].a - M[a.s].a || a.s - b.s],
+    ["lado mayor", (a, b) => M[b.s].l - M[a.s].l || M[b.s].a - M[a.s].a || a.s - b.s],
+    ["envolvente", (a, b) => M[b.s].b - M[a.s].b || a.s - b.s],
+  ];
+  let mejor = null;
+  ordenes.forEach(([nom, cmp], i) => {
+    const res = corrida(items.slice().sort(cmp), "Orden por " + nom, i / ordenes.length, (i + 1) / ordenes.length);
+    const ult = res.hojas.length ? res.hojas[res.hojas.length - 1].extX : 0;
+    const sc = res.hojas.length * 1e7 + ult;
+    if (!mejor || sc < mejor.sc) mejor = { ...res, sc, estrategia: nom };
+  });
+
+  return {
+    estrategia: mejor.estrategia, ms: Date.now() - t0,
+    hojas: mejor.hojas.map(h => ({ area: h.area, extX: m + h.extX * r,
+      pl: h.pl.map(p => ({ s: p.s, rot: p.rot, x: m + p.px * r, y: m + p.py * r, inst: p.inst })) })),
+    formas: formas.map(F => ({ rot: F.rot.map(R => R ? { mn: R.mn, w: R.w * r, h: R.h * r } : null) })),
+    sinColocar: mejor.sinColocar,
+    params: { ...P, d, celda: r }
+  };
+}
+
+</script>
 
 <dialog id="dlg">
   <div class="hd"><b id="dlgT"></b><span class="sp"></span><span class="leg"><span><i style="background:var(--corte)"></i>CORTE</span><span><i style="background:var(--marca)"></i>MARCA</span><span><i style="background:var(--err)"></i>Error</span></span><button id="dlgX">✕</button></div>
@@ -317,9 +521,10 @@ function parseDXF(txt) {
 
 /* ---------- geometría ---------- */
 const num = (raw, c, d = 0) => { const p = raw.find(x => x[0] === c); return p ? parseFloat(p[1]) : d; };
+const pasoAng = r => (r > 0.05 ? 2 * Math.acos(1 - 0.05 / r) : Math.PI / 4);  // cuerda con error ≤ 0.05 mm
 function arcoPts(cx, cy, r, a0, a1) {           // grados, sentido antihorario
   let da = a1 - a0; while (da <= 0) da += 360; if (da > 360) da = 360;
-  const n = Math.max(4, Math.ceil(da / 4));
+  const n = Math.min(720, Math.max(4, Math.ceil(da * Math.PI / 180 / pasoAng(r))));
   const pts = [];
   for (let k = 0; k <= n; k++) { const a = (a0 + da * k / n) * Math.PI / 180; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
   return pts;
@@ -332,7 +537,7 @@ function bulgePts(p0, p1, b) {
   const h = r * Math.cos(th / 2), ux = -dy / c, uy = dx / c;
   const cx = mx + ux * h, cy = my + uy * h;
   const a0 = Math.atan2(p0[1] - cy, p0[0] - cx);
-  const n = Math.max(2, Math.ceil(Math.abs(th) * 180 / Math.PI / 4)), R = Math.abs(r), pts = [];
+  const R = Math.abs(r), n = Math.min(720, Math.max(2, Math.ceil(Math.abs(th) / pasoAng(R)))), pts = [];
   for (let k = 0; k <= n; k++) { const a = a0 + th * k / n; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); }
   pts[0] = p0; pts[pts.length - 1] = p1;
   return pts;
@@ -399,7 +604,7 @@ function aPolilinea(e) {
       const cx = f(10), cy = f(20), mx = f(11), my = f(21), ra = f(40), p0 = f(41, 0), p1 = f(42, 2 * Math.PI);
       const a = Math.hypot(mx, my), b = a * ra, rot = Math.atan2(my, mx);
       let dp = p1 - p0; while (dp <= 0) dp += 2 * Math.PI;
-      const n = Math.max(16, Math.ceil(dp / (Math.PI / 45))), pts = [];
+      const n = Math.min(1440, Math.max(16, Math.ceil(dp / pasoAng(Math.max(a, 0.1))))), pts = [];
       for (let k = 0; k <= n; k++) { const t = p0 + dp * k / n, x = a * Math.cos(t), y = b * Math.sin(t); pts.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]); }
       const completa = Math.abs(dp - 2 * Math.PI) < 1e-6; if (completa) pts.pop();
       return fin(pts, completa);
@@ -911,9 +1116,181 @@ function vistaCapas() {
   $("#capBody").querySelectorAll("select[data-capa]").forEach(sel => sel.onchange = async () => {
     const r = rolesUsuario(); if (sel.value === "auto") delete r[sel.dataset.capa]; else r[sel.dataset.capa] = sel.value;
     ls.set("nl_roles", JSON.stringify(r));
-    const metas = [...S.metas.values()]; S.analisis.clear();
+    const metas = [...S.metas.values()]; S.analisis.clear(); S.nidos = null;
     await analizarArchivos(metas, "Reaplicando capas"); render(); $("#capCard").open = true;
   });
+}
+
+/* ============================== NIDOS ============================== */
+const NID_DEF = { sep: 3, margen: 5, res: 1.5, giro: true, minRetazo: 300 };
+const paramsNid = () => { try { return { ...NID_DEF, ...JSON.parse(ls.get("nl_nest", "{}")) }; } catch { return { ...NID_DEF }; } };
+const PALETA = ["#2e86de", "#e1702a", "#8e44ad", "#16a085", "#c0392b", "#d4a20a", "#2c3e50", "#e84393", "#00a8a8", "#6d4c41", "#7f8c8d", "#27ae60", "#5f27cd", "#b33771"];
+const pesoHoja = cal => ESPESOR[cal] ? AREA_HOJA * ESPESOR[cal] * DENS : 0;
+
+function motorAnidar(datos, onProg) {
+  const src = document.getElementById("motorSrc").textContent;
+  return new Promise((res, rej) => {
+    let w = null;
+    try {
+      const wsrc = src + "\nonmessage = e => { try { postMessage({ fin: anidar(e.data, (p, t) => postMessage({ p, t })) }); } catch (x) { postMessage({ error: String(x && x.message || x) }); } };";
+      w = new Worker(URL.createObjectURL(new Blob([wsrc], { type: "text/javascript" })));
+    } catch { w = null; }
+    if (w) {
+      w.onmessage = e => { const d = e.data; if (d.fin) { w.terminate(); res(d.fin); } else if (d.error) { w.terminate(); rej(new Error(d.error)); } else onProg && onProg(d.p, d.t); };
+      w.onerror = e => { w.terminate(); rej(new Error(e.message || "Error en el motor de nidos")); };
+      w.postMessage(datos);
+    } else {
+      try { const anidar = new Function(src + "\nreturn anidar;")(); setTimeout(() => { try { res(anidar(datos, onProg)); } catch (x) { rej(x); } }, 30); }
+      catch (x) { rej(x); }
+    }
+  });
+}
+
+async function generarNidos(filas) {
+  const P = paramsNid();
+  const ops = []; const opIdx = new Map();
+  const porCal = new Map(); const excluidas = [];
+  for (const f of filas) for (const p of f.piezas) {
+    if (p.res.sev === "err" || p.res.sev === "info" || !p.res.dibujo || !p.res.dibujo.corte.length) { excluidas.push({ f, p }); continue; }
+    const c = p.meta.n.cal ?? "?";
+    if (!opIdx.has(f)) { opIdx.set(f, ops.length); ops.push({ op: f.op.op, ruta: f.op.ruta, desc: f.op.desc, cant: f.op.cant }); }
+    if (!porCal.has(c)) porCal.set(c, new Map());
+    const g = porCal.get(c);
+    if (!g.has(p.meta.id)) g.set(p.meta.id, { meta: p.meta, res: p.res, inst: [] });
+    const e = g.get(p.meta.id); for (let k = 0; k < p.total; k++) e.inst.push(opIdx.get(f));
+  }
+  const cals = [...porCal.keys()].sort((a, b) => (a === "?") - (b === "?") || a - b);
+  const out = { params: P, ops, cals: [], excluidas, generado: new Date() };
+  for (let i = 0; i < cals.length; i++) {
+    const c = cals[i], arr = [...porCal.get(c).values()];
+    const datos = { params: { L: LAMINA.H, A: LAMINA.W, margen: P.margen, sep: P.sep, res: P.res, giro: P.giro, K: 4 },
+      piezas: arr.map(x => ({ key: x.meta.id, loops: x.res.dibujo.corte, area: x.res.area, inst: x.inst })) };
+    const r = await motorAnidar(datos, (fr, t) => progreso(`Calibre ${c} (${i + 1} de ${cals.length}) · ${t}`, (i + fr) / cals.length));
+    out.cals.push({ cal: c, piezas: arr, r });
+  }
+  progreso(null);
+  calcularConsumoReal(out);
+  return out;
+}
+
+/** Consumo real por lámina (la última se cobra solo hasta donde se usó si deja retazo recuperable) y su reparto por OP según área */
+function calcularConsumoReal(N) {
+  const P = N.params;
+  N.porOP = new Map();
+  for (const C of N.cals) {
+    C.hojas = C.r.hojas.map((h, i) => {
+      const ultima = i === C.r.hojas.length - 1;
+      const usado = Math.min(LAMINA.H, h.extX + P.sep);
+      const retazo = ultima ? LAMINA.H - usado : 0;
+      const recuperable = ultima && retazo >= P.minRetazo;
+      const consumo = recuperable ? usado / LAMINA.H : 1;
+      const porOp = new Map();
+      for (const pl of h.pl) {
+        const pz = C.piezas[pl.s];
+        const o = porOp.get(pl.inst) || { piezas: 0, area: 0 }; o.piezas++; o.area += pz.res.area; porOp.set(pl.inst, o);
+      }
+      return { ...h, n: i + 1, usado, retazo, recuperable, consumo, aprov: h.area / (AREA_HOJA * consumo), porOp };
+    });
+    C.totalHojas = C.hojas.reduce((s, h) => s + h.consumo, 0);
+    C.area = C.hojas.reduce((s, h) => s + h.area, 0);
+    C.aprov = C.area / (AREA_HOJA * C.totalHojas);
+    for (const h of C.hojas) for (const [oi, o] of h.porOp) {
+      const k = oi + "|" + C.cal;
+      const x = N.porOP.get(k) || { oi, cal: C.cal, piezas: 0, area: 0, hojas: 0, laminas: new Set() };
+      x.piezas += o.piezas; x.area += o.area; x.hojas += h.consumo * (o.area / h.area); x.laminas.add(h.n);
+      N.porOP.set(k, x);
+    }
+  }
+}
+
+function svgHoja(C, h, N) {
+  const L = LAMINA.H, A = LAMINA.W;
+  const rotPt = (k, p) => k === 0 ? p : k === 1 ? [-p[1], p[0]] : k === 2 ? [-p[0], -p[1]] : [p[1], -p[0]];
+  let s = `<svg viewBox="-10 -10 ${L + 20} ${A + 20}" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0 ${A}) scale(1 -1)">`;
+  s += `<rect x="0" y="0" width="${L}" height="${A}" fill="var(--panel)" stroke="var(--muted)" stroke-width="3"/>`;
+  if (h.recuperable) s += `<rect x="${h.usado}" y="0" width="${h.retazo}" height="${A}" fill="var(--ok-bg)" stroke="var(--ok)" stroke-width="3" stroke-dasharray="18 10"/>`;
+  else if (h.n === C.hojas.length && h.retazo > 0) s += `<rect x="${h.usado}" y="0" width="${L - h.usado}" height="${A}" fill="var(--err-bg)" opacity=".5"/>`;
+  for (const pl of h.pl) {
+    const pz = C.piezas[pl.s], info = C.r.formas[pl.s].rot[pl.rot], col = PALETA[pl.inst % PALETA.length], op = N.ops[pl.inst];
+    const tr = p => { const q = rotPt(pl.rot, p); return (q[0] - info.mn[0] + pl.x).toFixed(1) + " " + (q[1] - info.mn[1] + pl.y).toFixed(1); };
+    const d = pz.res.dibujo.corte.map(Lp => "M" + Lp.map(tr).join("L") + "Z").join("");
+    const mk = pz.res.dibujo.marca.map(m => "M" + m.pts.map(tr).join("L") + (m.cerrada ? "Z" : "")).join("");
+    s += `<g><title>${esc(op.op)} · ${esc(op.ruta)} · ${esc(pz.meta.n.pieza)} (CAL ${C.cal})</title><path d="${d}" fill="${col}" fill-opacity=".38" fill-rule="evenodd" stroke="${col}" stroke-width="2.2"/>${mk ? `<path d="${mk}" fill="none" stroke="var(--marca)" stroke-width="2"/>` : ""}</g>`;
+  }
+  s += `</g>`;
+  if (h.recuperable) s += `<text x="${h.usado + h.retazo / 2}" y="${A / 2}" text-anchor="middle" font-size="48" fill="var(--ok)" font-family="system-ui">Retazo ${fmt(A, 0)} × ${fmt(h.retazo, 0)} mm</text>`;
+  return s + `</svg>`;
+}
+
+function vistaNid(filas) {
+  const el = $("#t-nid");
+  const N = S.nidos;
+  $("#nNid").textContent = N ? N.cals.reduce((s, C) => s + C.hojas.length, 0) : 0;
+  if (!filas) { el.innerHTML = `<div class="card empty"><b>🧩 Nidos de corte</b>Carga el programa y lee la biblioteca para generar los nidos.</div>`; return; }
+  const P = paramsNid();
+  const listas = filas.reduce((s, f) => s + f.piezas.filter(p => p.res.sev === "ok" || p.res.sev === "warn").reduce((a, p) => a + p.total, 0), 0);
+  let h = `<div class="card" style="padding:12px 14px"><div class="params">
+      <label>Separación (mm)<input id="pSep" type="number" min="0.5" step="0.5" value="${P.sep}"></label>
+      <label>Margen orilla (mm)<input id="pMar" type="number" min="0" step="1" value="${P.margen}"></label>
+      <label>Giro de piezas<select id="pGiro"><option value="1" ${P.giro ? "selected" : ""}>Cada 90°</option><option value="0" ${!P.giro ? "selected" : ""}>Sin girar</option></select></label>
+      <label>Precisión<select id="pRes">${[[1, "Fina (1 mm)"], [1.5, "Normal (1.5 mm)"], [2, "Rápida (2 mm)"]].map(([v, t]) => `<option value="${v}" ${+P.res === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label>Retazo mínimo (mm)<input id="pRet" type="number" min="0" step="50" value="${P.minRetazo}"></label>
+      <span style="flex:1"></span>
+      ${N ? `<button id="bExpNid">⬇️ Excel</button>` : ""}<button id="bNid" class="pri" ${listas ? "" : "disabled"}>🧩 Generar nidos</button></div>
+      <p class="note">Lámina 4×10 (${fmt(LAMINA.H, 0)} × ${fmt(LAMINA.W, 1)} mm) · máximo aprovechamiento: se mezclan todas las OPs de cada calibre y las piezas se cargan hacia un extremo para dejar el sobrante como tira rectangular. ${fmt(listas)} piezas listas para anidar.</p></div>`;
+  if (!N) { el.innerHTML = h + `<div class="card empty"><b>Sin nidos generados</b>Revisa los parámetros y presiona 🧩 Generar nidos.</div>`; ligarNid(filas); return; }
+
+  const totH = N.cals.reduce((s, C) => s + C.hojas.length, 0);
+  h += `<div class="card tw"><table><thead><tr><th>Calibre</th><th class="num">Piezas</th><th class="num">Láminas</th><th class="num">Hojas consumidas</th><th class="num">Kg reales</th><th class="num">Aprovechamiento</th><th>Retazo final</th><th class="muted">Cálculo</th></tr></thead><tbody>`;
+  for (const C of N.cals) {
+    const u = C.hojas[C.hojas.length - 1], np = C.r.hojas.reduce((s, x) => s + x.pl.length, 0);
+    h += `<tr><td><b>CAL ${C.cal}</b></td><td class="num">${fmt(np)}</td><td class="num">${C.hojas.length}</td><td class="num"><b>${fmt(C.totalHojas, 2)}</b></td><td class="num">${fmt(C.totalHojas * pesoHoja(C.cal), 1)}</td>
+      <td class="num">${chipEstado(C.aprov >= .75 ? "ok" : C.aprov >= .55 ? "warn" : "err", fmt(C.aprov * 100, 1) + " %")}</td>
+      <td>${u && u.recuperable ? `♻️ ${fmt(LAMINA.W, 0)} × ${fmt(u.retazo, 0)} mm (${fmt(u.retazo / LAMINA.H, 2)} hoja)` : `<span class="muted">sin retazo recuperable</span>`}</td>
+      <td class="muted">${fmt(C.r.ms / 1000, 1)} s · orden por ${esc(C.r.estrategia)}${C.r.sinColocar.length ? ` · ❌ ${C.r.sinColocar.length} sin colocar` : ""}</td></tr>`;
+  }
+  h += `</tbody></table></div>`;
+  if (N.excluidas.length) h += `<p class="note">❌ No se anidaron ${fmt(N.excluidas.reduce((s, x) => s + x.p.total, 0))} piezas porque su dibujo tiene errores: ${[...new Set(N.excluidas.map(x => x.f.op.ruta + " · " + x.p.meta.n.pieza))].map(esc).join(", ")}.</p>`;
+
+  for (const C of N.cals) {
+    h += `<details class="card" ${N.cals.length === 1 || C === N.cals[0] ? "open" : ""}><summary>🧩 CAL ${C.cal} <span class="sub">${C.hojas.length} lámina(s) · ${fmt(C.aprov * 100, 1)} % aprovechamiento</span></summary><div class="body">`;
+    for (const hj of C.hojas) {
+      const opsH = [...hj.porOp.entries()].sort((a, b) => b[1].area - a[1].area);
+      h += `<div class="hoja"><div class="hd"><b>CAL ${C.cal} · Lámina ${hj.n} de ${C.hojas.length}</b>
+        <span class="chip">${hj.pl.length} piezas</span><span class="chip">${fmt(hj.aprov * 100, 1)} % aprov.</span>
+        <span class="chip">${hj.consumo < 1 ? `consumo ${fmt(hj.consumo, 2)} hoja` : "hoja completa"}</span>
+        ${hj.recuperable ? `<span class="st ok">♻️ retazo ${fmt(LAMINA.W, 0)} × ${fmt(hj.retazo, 0)} mm</span>` : ""}
+        <span class="chip">⏳ Pendiente</span></div>
+        ${svgHoja(C, hj, N)}
+        <div class="ops">${opsH.map(([oi, o]) => `<span title="${esc(N.ops[oi].desc)}"><i style="background:${PALETA[oi % PALETA.length]}"></i><b class="mono">${esc(N.ops[oi].op)}</b> ${esc(N.ops[oi].ruta)} · ${o.piezas} pz</span>`).join("")}</div></div>`;
+    }
+    h += `</div></details>`;
+  }
+
+  // consumo real por OP
+  const filasOP = [...N.porOP.values()].sort((a, b) => a.oi - b.oi || (a.cal - b.cal));
+  h += `<details class="card" open><summary>📦 Consumo real por OP <span class="sub">las láminas se reparten entre sus OPs en proporción al área de sus piezas, incluido el scrap</span></summary><div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Área neta m²</th><th class="num">Hojas reales</th><th class="num">Kg reales</th><th class="num">Kg / mueble</th><th>Láminas</th></tr></thead><tbody>`;
+  for (const x of filasOP) {
+    const o = N.ops[x.oi], kg = x.hojas * pesoHoja(x.cal);
+    h += `<tr><td class="mono"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${PALETA[x.oi % PALETA.length]};margin-right:5px"></i>${esc(o.op)}</td><td class="mono"><b>${esc(o.ruta)}</b></td><td>${esc(o.desc)}</td><td><span class="chip">CAL ${x.cal}</span></td>
+      <td class="num">${fmt(x.piezas)}</td><td class="num">${fmt(x.area, 3)}</td><td class="num"><b>${fmt(x.hojas, 3)}</b></td><td class="num">${fmt(kg, 2)}</td><td class="num">${fmt(kg / o.cant, 3)}</td><td class="muted">${[...x.laminas].sort((a, b) => a - b).map(n => "#" + n).join(" ")}</td></tr>`;
+  }
+  const tH = filasOP.reduce((s, x) => s + x.hojas, 0), tK = filasOP.reduce((s, x) => s + x.hojas * pesoHoja(x.cal), 0);
+  h += `<tr style="border-top:2px solid var(--line)"><td colspan="6"><b>Total</b></td><td class="num"><b>${fmt(tH, 3)}</b></td><td class="num"><b>${fmt(tK, 2)}</b></td><td></td><td></td></tr></tbody></table></div></details>`;
+  el.innerHTML = h;
+  ligarNid(filas);
+}
+
+function ligarNid(filas) {
+  const guardar = () => ls.set("nl_nest", JSON.stringify({ sep: +$("#pSep").value || NID_DEF.sep, margen: +$("#pMar").value || 0, giro: $("#pGiro").value === "1", res: +$("#pRes").value, minRetazo: +$("#pRet").value || 0 }));
+  ["#pSep", "#pMar", "#pGiro", "#pRes", "#pRet"].forEach(id => { const e = $(id); if (e) e.onchange = guardar; });
+  const be = $("#bExpNid"); if (be) be.onclick = () => exportarExcel(filas, listaPendientes(filas));
+  const b = $("#bNid");
+  if (b) b.onclick = async () => {
+    guardar(); b.disabled = true;
+    try { S.nidos = await generarNidos(filas); } catch (e) { progreso(null); alert("Nidos: " + e.message); }
+    render();
+  };
 }
 
 function vistaPen(filas) {
@@ -964,7 +1341,7 @@ function vistaBib() {
 
 function render() {
   const filas = evaluarPrograma();
-  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaCon(filas); vistaPen(filas); vistaBib(); vistaCapas();
+  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaNid(filas); vistaCon(filas); vistaPen(filas); vistaBib(); vistaCapas();
   document.querySelectorAll(".pv[data-id]").forEach(d => d.onclick = () => abrirPieza(d.dataset.id));
 }
 
@@ -1165,6 +1542,23 @@ async function exportarExcel(filas, L) {
     }
   }
 
+  if (S.nidos) {
+    const N = S.nidos;
+    const colsN = [{ k: "cal", t: "Calibre", w: 9, centro: true }, { k: "n", t: "Lámina", w: 9, centro: true }, { k: "pz", t: "Piezas", w: 9, num: true }, { k: "aprov", t: "Aprovechamiento", w: 14, num: true, fmt: "0.0%" },
+      { k: "cons", t: "Hojas consumidas", w: 13, num: true, fmt: "0.000" }, { k: "kg", t: "Kg reales", w: 11, num: true, fmt: "#,##0.00" }, { k: "ret", t: "Retazo recuperable", w: 22 }, { k: "ops", t: "OPs en la lámina", w: 70, wrap: true }];
+    const wsN = hoja("Nidos", "Nidos generados · láminas por calibre", colsN, "FF2E86DE");
+    let b2 = false;
+    for (const Cx of N.cals) { b2 = !b2; for (const hj of Cx.hojas) filaDatos(wsN, { cal: Cx.cal, n: `${hj.n} de ${Cx.hojas.length}`, pz: hj.pl.length, aprov: hj.aprov, cons: hj.consumo, kg: hj.consumo * pesoHoja(Cx.cal),
+      ret: hj.recuperable ? `${Math.round(LAMINA.W)} × ${Math.round(hj.retazo)} mm` : "", ops: [...hj.porOp.entries()].map(([oi, o]) => `${N.ops[oi].op} (${N.ops[oi].ruta}): ${o.piezas} pz`).join(" · ") }, colsN, { banda: b2 }); }
+    const colsR = [{ k: "op", t: "OP", w: 13, mono: true }, { k: "ruta", t: "Ruta", w: 13, mono: true }, { k: "desc", t: "Descripción", w: 36, wrap: true }, { k: "cal", t: "Calibre", w: 8, centro: true },
+      { k: "pz", t: "Piezas", w: 9, num: true }, { k: "area", t: "Área neta m²", w: 12, num: true, fmt: "#,##0.000" }, { k: "hojas", t: "Hojas reales", w: 12, num: true, fmt: "0.000" },
+      { k: "kg", t: "Kg reales", w: 11, num: true, fmt: "#,##0.00" }, { k: "kgm", t: "Kg por mueble", w: 12, num: true, fmt: "0.000" }, { k: "lam", t: "Láminas", w: 16 }];
+    const wsR = hoja("Consumo real por OP", "Consumo real de lámina por OP (según nidos)", colsR, "FF2E86DE");
+    const RR = [...N.porOP.values()].sort((a, b) => a.oi - b.oi || a.cal - b.cal);
+    RR.forEach((x, i) => { const o = N.ops[x.oi], kg = x.hojas * pesoHoja(x.cal); filaDatos(wsR, { op: o.op, ruta: o.ruta, desc: o.desc, cal: x.cal, pz: x.piezas, area: x.area, hojas: x.hojas, kg, kgm: kg / o.cant, lam: [...x.laminas].sort((a, b) => a - b).map(n => "#" + n).join(" ") }, colsR, { banda: i % 2 === 1 }); });
+    if (RR.length) { const a = 5, b = 4 + RR.length; filaDatos(wsR, { op: "TOTAL", pz: { formula: `SUBTOTAL(9,E${a}:E${b})` }, area: { formula: `SUBTOTAL(9,F${a}:F${b})` }, hojas: { formula: `SUBTOTAL(9,G${a}:G${b})` }, kg: { formula: `SUBTOTAL(9,H${a}:H${b})` } }, colsR, { bold: true, fondo: C.verdeCl }); }
+  }
+
   const buf = await wb.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   const a = document.createElement("a"); a.href = url; a.download = `Pendientes_Ingenieria_laser_${ahora.toISOString().slice(0, 10)}.xlsx`;
@@ -1190,7 +1584,7 @@ $("#bCache").onclick = async () => { await idb.clear(); S.analisis.clear(); esta
 $("#fProg").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
-    S.programa = leerPrograma(new Uint8Array(await f.arrayBuffer()), f.name);
+    S.programa = leerPrograma(new Uint8Array(await f.arrayBuffer()), f.name); S.nidos = null;
     estado(`Programa: ${S.programa.ops.length} OPs`);
     if (S.biblio) await analizarPrograma();
   } catch (err) { alert("Programa: " + err.message); }
@@ -1209,7 +1603,7 @@ $("#bLeer").onclick = async () => {
   try {
     progreso("Leyendo la biblioteca en Drive…", 0.05);
     const refrescar = !!S.biblio && S.biblio.origen === "drive";
-    S.analisis.clear();
+    S.analisis.clear(); S.nidos = null;
     await cargarListado(refrescar);
     estado(`Biblioteca: ${S.biblio.rutas.size} rutas`);
     await analizarPrograma();
@@ -1220,7 +1614,7 @@ $("#bLeer").onclick = async () => {
 
 $("#fLocal").onchange = async e => {
   const files = [...e.target.files]; if (!files.length) return;
-  const rutas = new Map(); S.local.clear(); S.analisis.clear();
+  const rutas = new Map(); S.local.clear(); S.analisis.clear(); S.nidos = null;
   for (const f of files) {
     const id = "local:" + f.name + ":" + f.size;
     S.local.set(id, new Uint8Array(await f.arrayBuffer()));
@@ -1236,7 +1630,7 @@ $("#fLocal").onchange = async e => {
 
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  for (const s of ["ops", "exp", "con", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== t.dataset.t);
+  for (const s of ["ops", "exp", "nid", "con", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== t.dataset.t);
   ls.set("nl_tab", t.dataset.t);
 });
 $("#bTema").onclick = () => {

@@ -96,6 +96,10 @@ dialog .cv svg{max-width:96%;max-height:96%}
 dialog .ft{padding:10px 14px;font-size:12.5px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .hide{display:none!important}
+.modo{display:flex;gap:2px;background:var(--chip);border-radius:9px;padding:3px}
+.modo button{border:none;background:none;padding:6px 12px;border-radius:7px;color:var(--muted)}
+.modo button.on{background:var(--panel);color:var(--ink);font-weight:650;box-shadow:var(--shadow)}
+body.mcorte .soloPlan{display:none!important}
 .note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
 .params{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
 .params label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
@@ -111,14 +115,15 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
 <body>
 <header>
   <div class="logo">N</div>
-  <h1><small>Línea Italia · Láser de cama</small>Nidos de corte · Validador de biblioteca</h1>
+  <h1><small>Línea Italia · Láser de cama</small>Nidos de corte</h1>
+  <nav class="modo"><button data-m="plan">🗂️ Planeación</button><button data-m="corte">✂️ Corte</button></nav>
   <span class="sp"></span>
   <span id="estado"></span>
-  <label class="btn" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
-  <button id="bLeer" class="pri" title="Leer la biblioteca de Drive y validar los dibujos del programa">🔄 Leer biblioteca</button>
+  <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
+  <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca de Drive y validar los dibujos del programa">🔄 Leer biblioteca</button>
   <button id="bTema" title="Tema claro/oscuro">🌓</button>
 </header>
-<main>
+<main id="plan">
   <details class="card" id="cfgCard">
     <summary>⚙️ Conexión <span class="sub" id="cfgSub">sin configurar</span></summary>
     <div class="body">
@@ -161,6 +166,7 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
   <section id="t-pen" class="hide"></section>
   <section id="t-bib" class="hide"></section>
 </main>
+<main id="corte" class="hide"></main>
 
 <script id="motorSrc" type="text/plain">
 /* ===== MOTOR DE NIDOS (forma real, rasterizado conservador) =====
@@ -171,10 +177,11 @@ dialog .ft{padding:10px 14px;font-size:12.5px}
  */
 function anidar(D, prog) {
   const P = D.params;
-  const r = P.res, m = P.margen, K = P.K || 4;
-  const d = Math.max(1, Math.ceil(P.sep / r - 1e-9));         // celdas de separación
-  const W = Math.floor((P.L - 2 * m) / r + 1e-9), H = Math.floor((P.A - 2 * m) / r + 1e-9);
-  const Wp = W + 2 * d, Hp = H + 2 * d;
+  const r = P.res, K = P.K || 4;
+  const m = P.margen + 0.1;                                      // holgura por aproximación de curvas
+  const d = Math.max(1, Math.ceil(P.sep / r - 1e-9));           // celdas de separación
+  const dimH = (L, A) => ({ W: Math.floor((L - 2 * m) / r + 1e-9), H: Math.floor((A - 2 * m) / r + 1e-9) });
+  const { W, H } = dimH(P.L, P.A);                               // lámina completa (la más grande)
   const rots = P.giro ? [0, 1, 2, 3] : [0];
   const t0 = Date.now();
 
@@ -267,11 +274,14 @@ function anidar(D, prog) {
     return { rot, area: pz.area, key: pz.key };
   });
 
-  /* ---------- lámina ---------- */
-  const onw = (Wp >> 5) + 3, Wc = Math.ceil(Wp / K), Hc = Math.ceil(Hp / K), cnw = (Wc >> 5) + 3;
-  function nuevaHoja() { return { occ: new Uint32Array(Hp * onw), occC: new Uint32Array(Hc * cnw), pl: [], extX: 0, cache: new Map(), area: 0 }; }
+  /* ---------- lámina (completa o retazo) ---------- */
+  function nuevaHoja(spec) {
+    const { W, H } = dimH(spec.L, spec.A), Wp = W + 2 * d, Hp = H + 2 * d;
+    const onw = (Wp >> 5) + 3, Wc = Math.ceil(Wp / K), Hc = Math.ceil(Hp / K), cnw = (Wc >> 5) + 3;
+    return { spec, W, H, onw, cnw, occ: new Uint32Array(Hp * onw), occC: new Uint32Array(Hc * cnw), pl: [], extX: 0, cache: new Map(), area: 0 };
+  }
   function colocar(Hj, si, k, px, py) {
-    const R = formas[si].rot[k], c = R.cov;
+    const R = formas[si].rot[k], c = R.cov, onw = Hj.onw, cnw = Hj.cnw;
     for (let j = 0; j < c.h; j++) for (let i = 0; i < c.w; i++) if (c.g[j * c.w + i]) {
       const X = px + d + i, Y = py + d + j;
       Hj.occ[Y * onw + (X >> 5)] |= 1 << (X & 31);
@@ -282,9 +292,11 @@ function anidar(D, prog) {
   }
   function buscar(Hj, si, k) {
     const R = formas[si].rot[k]; if (!R || R.duplicado) return null;
+    if (R.w > Hj.W || R.h > Hj.H) return null;
     const ck = si + ":" + k; let st = Hj.cache.get(ck);
     if (st === -1) return null;
-    const Xmax = Math.floor((W - R.w) / K), Ymax = Math.floor((H - R.h) / K);
+    const onw = Hj.onw, cnw = Hj.cnw;
+    const Xmax = Math.floor((Hj.W - R.w) / K), Ymax = Math.floor((Hj.H - R.h) / K);
     let X0 = st ? st[0] : 0, Y0 = st ? st[1] : 0;
     for (let X = X0; X <= Xmax; X++) {
       for (let Y = X === X0 ? Y0 : 0; Y <= Ymax; Y++) {
@@ -305,14 +317,14 @@ function anidar(D, prog) {
 
   /* ---------- una corrida con un orden dado ---------- */
   function corrida(orden, etiqueta, frac0, frac1) {
-    const hojas = [], sinColocar = [];
+    const hojas = (P.retazos || []).map(rz => nuevaHoja(rz)), sinColocar = [];
     orden.forEach((it, n) => {
       if (n % 5 === 0 && prog) prog(frac0 + (frac1 - frac0) * n / orden.length, etiqueta);
       const F = formas[it.s];
       if (!F.rot.some(R => R)) { sinColocar.push(it); return; }
       let ok = false;
       for (let h = 0; h <= hojas.length && !ok; h++) {
-        if (h === hojas.length) hojas.push(nuevaHoja());
+        if (h === hojas.length) hojas.push(nuevaHoja({ L: P.L, A: P.A }));
         const Hj = hojas[h]; let mejor = null;
         for (const k of rots) {
           const c = buscar(Hj, it.s, k); if (!c) continue;
@@ -320,10 +332,10 @@ function anidar(D, prog) {
           if (!mejor || sc < mejor.sc) mejor = { ...c, sc };
         }
         if (mejor) { colocar(Hj, it.s, mejor.k, mejor.px, mejor.py); Hj.pl.push({ s: it.s, rot: mejor.k, px: mejor.px, py: mejor.py, inst: it.inst }); Hj.area += F.area; ok = true; }
-        else if (h === hojas.length - 1 && !Hj.pl.length) { hojas.pop(); sinColocar.push(it); ok = true; }
+        else if (h === hojas.length - 1 && !Hj.pl.length && !Hj.spec.id) { hojas.pop(); sinColocar.push(it); ok = true; }
       }
     });
-    return { hojas, sinColocar };
+    return { hojas: hojas.filter(h => h.pl.length), sinColocar };
   }
 
   const items = [];
@@ -338,14 +350,16 @@ function anidar(D, prog) {
   let mejor = null;
   ordenes.forEach(([nom, cmp], i) => {
     const res = corrida(items.slice().sort(cmp), "Orden por " + nom, i / ordenes.length, (i + 1) / ordenes.length);
+    // costo: área de lámina usada (retazos cuentan su tamaño), luego extensión de la última
+    const nuevas = res.hojas.filter(h => !h.spec.id).length, retz = res.hojas.filter(h => h.spec.id).reduce((s, h) => s + h.spec.L / P.L, 0);
     const ult = res.hojas.length ? res.hojas[res.hojas.length - 1].extX : 0;
-    const sc = res.hojas.length * 1e7 + ult;
+    const sc = (nuevas + retz) * 1e7 + ult;
     if (!mejor || sc < mejor.sc) mejor = { ...res, sc, estrategia: nom };
   });
 
   return {
     estrategia: mejor.estrategia, ms: Date.now() - t0,
-    hojas: mejor.hojas.map(h => ({ area: h.area, extX: m + h.extX * r,
+    hojas: mejor.hojas.map(h => ({ area: h.area, extX: m + h.extX * r, L: h.spec.L, A: h.spec.A, retazoId: h.spec.id || null,
       pl: h.pl.map(p => ({ s: p.s, rot: p.rot, x: m + p.px * r, y: m + p.py * r, inst: p.inst })) })),
     formas: formas.map(F => ({ rot: F.rot.map(R => R ? { mn: R.mn, w: R.w * r, h: R.h * r } : null) })),
     sinColocar: mejor.sinColocar,
@@ -697,7 +711,7 @@ function analizar(dxf) {
     if (k && vistos.has(k)) { dup++; continue; }
     if (k) vistos.add(k);
     if (!porCapa.has(e.capa)) porCapa.set(e.capa, []);
-    porCapa.get(e.capa).push(pl);
+    pl.ent = e; porCapa.get(e.capa).push(pl);
   }
   if (dup) add(avisos, `${dup} entidad(es) duplicada(s) (encimadas); se marcarían/cortarían dos veces`);
   // rol: lo que definas en ⚙️ Capas > nombre CORTE/MARCA > automático (la capa con el contorno cerrado más grande es corte)
@@ -719,7 +733,8 @@ function analizar(dxf) {
   const corte = capas.filter(c => c.rol === "corte").flatMap(c => c.ents);
   const dibujo = { corte: [], marca: capas.filter(c => c.rol === "marca").flatMap(c => c.ents), abiertos: [] };
   const res = { errores, avisos, dibujo, ancho: 0, alto: 0, area: 0, perimCorte: 0, largoMarca: 0, lazos: 0, barrenos: 0,
-                capas: capas.map(c => ({ nombre: c.nombre, rol: c.rol, origen: c.origen, n: c.ents.length, color: c.color })) };
+                capas: capas.map(c => ({ nombre: c.nombre, rol: c.rol, origen: c.origen, n: c.ents.length, color: c.color })),
+                exp: capas.filter(c => c.rol === "corte" || c.rol === "marca").flatMap(c => c.ents.map(pl => ({ rol: c.rol, e: pl.ent, pl }))) };
   res.largoMarca = dibujo.marca.reduce((s, q) => s + largo(q.pts, q.cerrada), 0);
   if (!corte.length) add(errores, "No se encontró ninguna capa con un contorno cerrado de corte");
   const { lazos, abiertos } = encadenar(corte.length ? corte : capas.flatMap(c => c.ents));
@@ -1121,11 +1136,176 @@ function vistaCapas() {
   });
 }
 
+/* ============================== DXF DEL NIDO (para CypCut) ============================== */
+/* Fuente de un solo trazo (rejilla 4×6): cada carácter son líneas abiertas, sin cuerpo */
+const FUENTE = {
+  "0": [[[0,0],[4,0],[4,6],[0,6],[0,0],[4,6]]], "1": [[[1,5],[2,6],[2,0]],[[1,0],[3,0]]], "2": [[[0,6],[4,6],[4,3],[0,3],[0,0],[4,0]]],
+  "3": [[[0,6],[4,6],[4,0],[0,0]],[[1,3],[4,3]]], "4": [[[0,6],[0,3],[4,3]],[[4,6],[4,0]]], "5": [[[4,6],[0,6],[0,3],[4,3],[4,0],[0,0]]],
+  "6": [[[4,6],[0,6],[0,0],[4,0],[4,3],[0,3]]], "7": [[[0,6],[4,6],[2,0]]], "8": [[[0,0],[4,0],[4,6],[0,6],[0,0]],[[0,3],[4,3]]],
+  "9": [[[0,0],[4,0],[4,6],[0,6],[0,3],[4,3]]],
+  A: [[[0,0],[0,4],[2,6],[4,4],[4,0]],[[0,3],[4,3]]], B: [[[0,0],[0,6],[3,6],[4,5],[4,4],[3,3],[0,3]],[[3,3],[4,2],[4,1],[3,0],[0,0]]],
+  C: [[[4,6],[0,6],[0,0],[4,0]]], D: [[[0,0],[0,6],[3,6],[4,5],[4,1],[3,0],[0,0]]], E: [[[4,6],[0,6],[0,0],[4,0]],[[0,3],[3,3]]],
+  F: [[[4,6],[0,6],[0,0]],[[0,3],[3,3]]], G: [[[4,6],[0,6],[0,0],[4,0],[4,3],[2,3]]], H: [[[0,6],[0,0]],[[4,6],[4,0]],[[0,3],[4,3]]],
+  I: [[[1,6],[3,6]],[[2,6],[2,0]],[[1,0],[3,0]]], J: [[[4,6],[4,0],[0,0],[0,2]]], K: [[[0,6],[0,0]],[[4,6],[0,3],[4,0]]],
+  L: [[[0,6],[0,0],[4,0]]], M: [[[0,0],[0,6],[2,3],[4,6],[4,0]]], N: [[[0,0],[0,6],[4,0],[4,6]]], O: [[[0,0],[4,0],[4,6],[0,6],[0,0]]],
+  P: [[[0,0],[0,6],[4,6],[4,3],[0,3]]], Q: [[[0,0],[4,0],[4,6],[0,6],[0,0]],[[2,2],[4,0]]], R: [[[0,0],[0,6],[4,6],[4,3],[0,3],[4,0]]],
+  S: [[[4,5],[3,6],[1,6],[0,5],[0,4],[1,3],[3,3],[4,2],[4,1],[3,0],[1,0],[0,1]]], T: [[[0,6],[4,6]],[[2,6],[2,0]]],
+  U: [[[0,6],[0,0],[4,0],[4,6]]], V: [[[0,6],[2,0],[4,6]]], W: [[[0,6],[1,0],[2,3],[3,0],[4,6]]], X: [[[0,0],[4,6]],[[0,6],[4,0]]],
+  Y: [[[0,6],[2,3],[4,6]],[[2,3],[2,0]]], Z: [[[0,6],[4,6],[0,0],[4,0]]], "-": [[[0.5,3],[3.5,3]]], "/": [[[0,0],[4,6]]],
+  ".": [[[1.6,0],[2.4,0],[2.4,0.8],[1.6,0.8],[1.6,0]]], "_": [[[0,0],[4,0]]]
+};
+/** Trazos de un texto con su esquina inferior izquierda en (0,0); altura h mm. Devuelve {trazos, w, h} */
+function textoTrazos(txt, h) {
+  const s = h / 6, out = [];
+  let x = 0;
+  for (const ch of String(txt).toUpperCase()) {
+    const g = FUENTE[ch];
+    if (g) for (const st of g) out.push(st.map(([a, b]) => [x + a * s, b * s]));
+    x += 6 * s;
+  }
+  return { trazos: out, w: Math.max(0, x - 2 * s), h };
+}
+
+/* ---------- ubicación del texto dentro de la pieza ---------- */
+function distSeg(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+  let t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
+function dentroMaterial(p, loops) { let c = 0; for (const L of loops) if (dentro(p, L)) c++; return c % 2 === 1; }
+/** Busca un rectángulo w×h (más holgura) dentro del material, lejos de bordes, barrenos y marcas. Devuelve {x,y,rot90} o null */
+function ubicarTexto(loops, marcas, w, h, holgura = 2.5) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const L of loops) for (const [x, y] of L) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+  const segs = [];
+  for (const L of loops) for (let i = 0; i < L.length; i++) segs.push([L[i], L[(i + 1) % L.length]]);
+  for (const m of marcas) for (let i = 0; i + 1 < m.pts.length; i++) segs.push([m.pts[i], m.pts[i + 1]]);
+  if (marcas.some(m => m.cerrada)) for (const m of marcas) if (m.cerrada && m.pts.length > 2) segs.push([m.pts[m.pts.length - 1], m.pts[0]]);
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const libre = p => { if (!dentroMaterial(p, loops)) return false; for (const [a, b] of segs) if (distSeg(p, a, b) < holgura) return false; return true; };
+  let mejor = null;
+  for (const rot90 of [false, true]) {
+    const W = rot90 ? h : w, H = rot90 ? w : h;
+    if (W + 2 * holgura > x1 - x0 || H + 2 * holgura > y1 - y0) continue;
+    const pasoX = Math.max(2, (x1 - x0) / 60), pasoY = Math.max(2, (y1 - y0) / 60);
+    const muestras = [];
+    const nx = Math.max(2, Math.ceil(W / 3)), ny = Math.max(2, Math.ceil(H / 3));
+    for (let i = 0; i <= nx; i++) for (let j = 0; j <= ny; j++) muestras.push([W * i / nx, H * j / ny]);
+    const cand = [];
+    for (let x = x0 + holgura; x + W <= x1 - holgura; x += pasoX) for (let y = y0 + holgura; y + H <= y1 - holgura; y += pasoY) cand.push([x, y, Math.hypot(x + W / 2 - cx, y + H / 2 - cy)]);
+    cand.sort((a, b) => a[2] - b[2]);
+    for (const [x, y, dd] of cand.slice(0, 1500)) {
+      if (mejor && dd >= mejor.dd) break;
+      if (muestras.every(([u, v]) => libre([x + u, y + v]))) { if (!mejor || dd < mejor.dd) mejor = { x, y, rot90, dd }; break; }
+    }
+  }
+  return mejor;
+}
+const cacheTexto = new Map();
+/** Trazos de la ruta grabada en coordenadas locales de la pieza (o []) */
+function trazosRuta(meta, res, ruta, alturas = [8, 5]) {
+  const k = meta.id + "|" + ruta;
+  if (cacheTexto.has(k)) return cacheTexto.get(k);
+  let out = [];
+  for (const h of alturas) {
+    const T = textoTrazos(ruta, h);
+    const u = ubicarTexto(res.dibujo.corte, res.dibujo.marca, T.w, T.h);
+    if (!u) continue;
+    out = T.trazos.map(st => st.map(([a, b]) => u.rot90 ? [u.x + T.h - b, u.y + a] : [u.x + a, u.y + b]));
+    break;
+  }
+  cacheTexto.set(k, out);
+  return out;
+}
+
+/* ---------- escritor DXF R12 ---------- */
+function DXFw() {
+  const L = [];
+  const n = v => (Math.round(v * 1e4) / 1e4).toString();
+  const g = (c, v) => { L.push(String(c), String(v)); };
+  return {
+    linea(capa, a, b) { g(0, "LINE"); g(8, capa); g(10, n(a[0])); g(20, n(a[1])); g(30, 0); g(11, n(b[0])); g(21, n(b[1])); g(31, 0); },
+    circulo(capa, c, r) { g(0, "CIRCLE"); g(8, capa); g(10, n(c[0])); g(20, n(c[1])); g(30, 0); g(40, n(r)); },
+    arco(capa, c, r, a0, a1) { g(0, "ARC"); g(8, capa); g(10, n(c[0])); g(20, n(c[1])); g(30, 0); g(40, n(r)); g(50, n(((a0 % 360) + 360) % 360)); g(51, n(((a1 % 360) + 360) % 360)); },
+    poli(capa, pts, cerrada, bulges) {
+      if (pts.length < 2) return;
+      g(0, "POLYLINE"); g(8, capa); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, cerrada ? 1 : 0);
+      pts.forEach((p, i) => { g(0, "VERTEX"); g(8, capa); g(10, n(p[0])); g(20, n(p[1])); g(30, 0); if (bulges && bulges[i]) g(42, n(bulges[i])); });
+      g(0, "SEQEND"); g(8, capa);
+    },
+    texto() {
+      const H = ["0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", "AC1009", "9", "$INSUNITS", "70", "4", "0", "ENDSEC",
+        "0", "SECTION", "2", "TABLES",
+        "0", "TABLE", "2", "LTYPE", "70", "1", "0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0.0", "0", "ENDTAB",
+        "0", "TABLE", "2", "LAYER", "70", "2",
+        "0", "LAYER", "2", "CORTE", "70", "0", "62", "3", "6", "CONTINUOUS",
+        "0", "LAYER", "2", "MARCA", "70", "0", "62", "2", "6", "CONTINUOUS",
+        "0", "ENDTAB", "0", "ENDSEC", "0", "SECTION", "2", "ENTITIES"];
+      return H.concat(L, ["0", "ENDSEC", "0", "EOF"]).join("\r\n") + "\r\n";
+    }
+  };
+}
+
+/** Escribe una entidad original transformada (giro múltiplo de 90° + traslado) */
+function escribirEntidad(W, capa, e, pl, k, T) {
+  const R = e.raw, f = (c, d = 0) => num(R, c, d);
+  const esp = e.extrZ < 0;                          // OCS espejado → a WCS
+  const rp = p => { const q = k === 0 ? p : k === 1 ? [-p[1], p[0]] : k === 2 ? [-p[0], -p[1]] : [p[1], -p[0]]; return T(q); };
+  const ang = a => a + 90 * k;
+  switch (e.tipo) {
+    case "LINE": W.linea(capa, rp([f(10), f(20)]), rp([f(11), f(21)])); return;
+    case "CIRCLE": W.circulo(capa, rp([esp ? -f(10) : f(10), f(20)]), f(40)); return;
+    case "ARC": {
+      let c = [f(10), f(20)], a0 = f(50), a1 = f(51);
+      if (esp) { c = [-c[0], c[1]]; const t = a0; a0 = 180 - a1; a1 = 180 - t; }
+      W.arco(capa, rp(c), f(40), ang(a0), ang(a1)); return;
+    }
+    case "LWPOLYLINE": {
+      const v = []; let cur = null;
+      for (const [c, s] of R) { if (c === 10) { cur = { x: parseFloat(s), y: 0, b: 0 }; v.push(cur); } else if (c === 20 && cur) cur.y = parseFloat(s); else if (c === 42 && cur) cur.b = parseFloat(s); }
+      W.poli(capa, v.map(q => rp([esp ? -q.x : q.x, q.y])), (f(70) & 1) === 1, v.map(q => esp ? -q.b : q.b)); return;
+    }
+    case "POLYLINE": {
+      const v = e.vert.map(vr => ({ x: num(vr, 10), y: num(vr, 20), b: num(vr, 42) }));
+      W.poli(capa, v.map(q => rp([esp ? -q.x : q.x, q.y])), (f(70) & 1) === 1, v.map(q => esp ? -q.b : q.b)); return;
+    }
+    default:                                          // SPLINE, ELLIPSE → polilínea fina (error ≤ 0.05 mm)
+      W.poli(capa, pl.pts.map(rp), !!pl.cerrada, null);
+  }
+}
+
+/**
+ * DXF de una lámina del nido.
+ * hoja: {L, A, pl:[{s, rot, x, y, inst}], usado, retazo, recuperable}, C: {piezas:[{meta,res}], r:{formas}}, ops: [{ruta}]
+ * opc: {grabarRuta, idRetazo, sep}
+ */
+function dxfNido(hoja, C, ops, opc = {}) {
+  const W = DXFw();
+  for (const pl of hoja.pl) {
+    const pz = C.piezas[pl.s], info = C.r.formas[pl.s].rot[pl.rot], k = pl.rot;
+    const T = q => [q[0] - info.mn[0] + pl.x, q[1] - info.mn[1] + pl.y];
+    for (const x of pz.res.exp) escribirEntidad(W, x.rol === "corte" ? "CORTE" : "MARCA", x.e, x.pl, k, T);
+    if (opc.grabarRuta) {
+      const rp = p => T(k === 0 ? p : k === 1 ? [-p[1], p[0]] : k === 2 ? [-p[0], -p[1]] : [p[1], -p[0]]);
+      for (const st of trazosRuta(pz.meta, pz.res, ops[pl.inst].ruta)) W.poli("MARCA", st.map(rp), false, null);
+    }
+  }
+  if (hoja.recuperable && opc.idRetazo) {
+    const x = hoja.usado;                            // línea que separa el retazo, de orilla a orilla
+    W.linea("CORTE", [x, -2], [x, hoja.A + 2]);
+    const T = textoTrazos(opc.idRetazo, 15);
+    const ox = x + 25, oy = 25;
+    if (ox + T.w < hoja.L - 10) for (const st of T.trazos) W.poli("MARCA", st.map(([a, b]) => [ox + a, oy + b]), false, null);
+  }
+  return W.texto();
+}
+
 /* ============================== NIDOS ============================== */
-const NID_DEF = { sep: 3, margen: 5, res: 1.5, giro: true, minRetazo: 300 };
+const NID_DEF = { sep: 3, margen: 5, res: 1.5, giro: true, minRetazo: 300, grabarRuta: true, usarRetazos: true };
 const paramsNid = () => { try { return { ...NID_DEF, ...JSON.parse(ls.get("nl_nest", "{}")) }; } catch { return { ...NID_DEF }; } };
 const PALETA = ["#2e86de", "#e1702a", "#8e44ad", "#16a085", "#c0392b", "#d4a20a", "#2c3e50", "#e84393", "#00a8a8", "#6d4c41", "#7f8c8d", "#27ae60", "#5f27cd", "#b33771"];
 const pesoHoja = cal => ESPESOR[cal] ? AREA_HOJA * ESPESOR[cal] * DENS : 0;
+const pad2 = n => String(n).padStart(2, "0");
 
 function motorAnidar(datos, onProg) {
   const src = document.getElementById("motorSrc").textContent;
@@ -1146,8 +1326,17 @@ function motorAnidar(datos, onProg) {
   });
 }
 
+/** Retazos disponibles de un calibre (del inventario del servidor), del más antiguo al más nuevo */
+function retazosDisponibles(cal) {
+  const E = S.estado; if (!E) return [];
+  return E.retazos.filter(r => r.estado === "disponible" && String(r.calibre) === String(cal))
+    .sort((a, b) => String(a.creado).localeCompare(String(b.creado)))
+    .map(r => ({ id: r.id, L: Number(r.largo), A: Number(r.ancho) || LAMINA.W }));
+}
+
 async function generarNidos(filas) {
   const P = paramsNid();
+  if (P.usarRetazos && servidorConfigurado()) { try { await cargarEstado(); } catch { /* sin inventario: solo láminas nuevas */ } }
   const ops = []; const opIdx = new Map();
   const porCal = new Map(); const excluidas = [];
   for (const f of filas) for (const p of f.piezas) {
@@ -1160,36 +1349,37 @@ async function generarNidos(filas) {
     const e = g.get(p.meta.id); for (let k = 0; k < p.total; k++) e.inst.push(opIdx.get(f));
   }
   const cals = [...porCal.keys()].sort((a, b) => (a === "?") - (b === "?") || a - b);
-  const out = { params: P, ops, cals: [], excluidas, generado: new Date() };
+  const out = { params: P, ops, cals: [], excluidas, generado: new Date(), programa: S.programa ? S.programa.nombre : "" };
   for (let i = 0; i < cals.length; i++) {
     const c = cals[i], arr = [...porCal.get(c).values()];
-    const datos = { params: { L: LAMINA.H, A: LAMINA.W, margen: P.margen, sep: P.sep, res: P.res, giro: P.giro, K: 4 },
+    const datos = { params: { L: LAMINA.H, A: LAMINA.W, margen: P.margen, sep: P.sep, res: P.res, giro: P.giro, K: 4, retazos: P.usarRetazos ? retazosDisponibles(c) : [] },
       piezas: arr.map(x => ({ key: x.meta.id, loops: x.res.dibujo.corte, area: x.res.area, inst: x.inst })) };
     const r = await motorAnidar(datos, (fr, t) => progreso(`Calibre ${c} (${i + 1} de ${cals.length}) · ${t}`, (i + fr) / cals.length));
     out.cals.push({ cal: c, piezas: arr, r });
   }
   progreso(null);
   calcularConsumoReal(out);
+  asignarIds(out);
   return out;
 }
 
-/** Consumo real por lámina (la última se cobra solo hasta donde se usó si deja retazo recuperable) y su reparto por OP según área */
+/** Consumo real por lámina: si el sobrante es recuperable solo se cobra lo usado; se reparte entre OPs por área */
 function calcularConsumoReal(N) {
   const P = N.params;
   N.porOP = new Map();
   for (const C of N.cals) {
     C.hojas = C.r.hojas.map((h, i) => {
-      const ultima = i === C.r.hojas.length - 1;
-      const usado = Math.min(LAMINA.H, h.extX + P.sep);
-      const retazo = ultima ? LAMINA.H - usado : 0;
-      const recuperable = ultima && retazo >= P.minRetazo;
-      const consumo = recuperable ? usado / LAMINA.H : 1;
+      const L = h.L || LAMINA.H, A = h.A || LAMINA.W;
+      const usado = Math.min(L, h.extX + P.sep);
+      const retazo = L - usado;
+      const recuperable = retazo >= P.minRetazo;
+      const consumo = (recuperable ? usado : L) / LAMINA.H;
       const porOp = new Map();
       for (const pl of h.pl) {
         const pz = C.piezas[pl.s];
         const o = porOp.get(pl.inst) || { piezas: 0, area: 0 }; o.piezas++; o.area += pz.res.area; porOp.set(pl.inst, o);
       }
-      return { ...h, n: i + 1, usado, retazo, recuperable, consumo, aprov: h.area / (AREA_HOJA * consumo), porOp };
+      return { ...h, L, A, n: i + 1, usado, retazo, recuperable, consumo, aprov: h.area / (AREA_HOJA * consumo), porOp };
     });
     C.totalHojas = C.hojas.reduce((s, h) => s + h.consumo, 0);
     C.area = C.hojas.reduce((s, h) => s + h.area, 0);
@@ -1203,13 +1393,39 @@ function calcularConsumoReal(N) {
   }
 }
 
-function svgHoja(C, h, N) {
-  const L = LAMINA.H, A = LAMINA.W;
+/** Ids del programa, de cada nido y de los retazos que se generarán (consecutivo por día y calibre) */
+function asignarIds(N) {
+  const d = N.generado, yy = String(d.getFullYear()).slice(2), mmdd = pad2(d.getMonth() + 1) + pad2(d.getDate());
+  N.id = `P${yy}${mmdd}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+  const usados = new Set(((S.estado && S.estado.retazos) || []).map(r => r.id));
+  for (const C of N.cals) {
+    let seq = 0;
+    C.hojas.forEach(h => {
+      h.id = `${N.id}-C${C.cal}-${pad2(h.n)}`;
+      h.archivo = `C${C.cal}_${N.id}_L${pad2(h.n)}de${pad2(C.hojas.length)}${h.retazoId ? "_" + h.retazoId : ""}.dxf`;
+      if (h.recuperable) {
+        let id; do { id = `R${C.cal}-${mmdd}-${++seq}`; } while (usados.has(id));
+        usados.add(id); h.idRetazo = id;
+      } else h.idRetazo = null;
+    });
+  }
+}
+
+function dxfDeHoja(N, C, h) { return dxfNido(h, C, N.ops, { grabarRuta: N.params.grabarRuta, idRetazo: h.idRetazo }); }
+
+function descargarTexto(nombre, texto, tipo = "application/dxf") {
+  const url = URL.createObjectURL(new Blob([texto], { type: tipo }));
+  const a = document.createElement("a"); a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+function svgHoja(C, h, N, alto) {
+  const L = h.L, A = h.A;
   const rotPt = (k, p) => k === 0 ? p : k === 1 ? [-p[1], p[0]] : k === 2 ? [-p[0], -p[1]] : [p[1], -p[0]];
-  let s = `<svg viewBox="-10 -10 ${L + 20} ${A + 20}" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0 ${A}) scale(1 -1)">`;
-  s += `<rect x="0" y="0" width="${L}" height="${A}" fill="var(--panel)" stroke="var(--muted)" stroke-width="3"/>`;
+  let s = `<svg viewBox="-10 -10 ${L + 20} ${A + 20}" xmlns="http://www.w3.org/2000/svg" ${alto ? `style="max-height:${alto}px"` : ""}><g transform="translate(0 ${A}) scale(1 -1)">`;
+  s += `<rect x="0" y="0" width="${L}" height="${A}" fill="var(--panel)" stroke="${h.retazoId ? "var(--ok)" : "var(--muted)"}" stroke-width="3"/>`;
   if (h.recuperable) s += `<rect x="${h.usado}" y="0" width="${h.retazo}" height="${A}" fill="var(--ok-bg)" stroke="var(--ok)" stroke-width="3" stroke-dasharray="18 10"/>`;
-  else if (h.n === C.hojas.length && h.retazo > 0) s += `<rect x="${h.usado}" y="0" width="${L - h.usado}" height="${A}" fill="var(--err-bg)" opacity=".5"/>`;
+  else if (h.retazo > 0) s += `<rect x="${h.usado}" y="0" width="${L - h.usado}" height="${A}" fill="var(--err-bg)" opacity=".5"/>`;
   for (const pl of h.pl) {
     const pz = C.piezas[pl.s], info = C.r.formas[pl.s].rot[pl.rot], col = PALETA[pl.inst % PALETA.length], op = N.ops[pl.inst];
     const tr = p => { const q = rotPt(pl.rot, p); return (q[0] - info.mn[0] + pl.x).toFixed(1) + " " + (q[1] - info.mn[1] + pl.y).toFixed(1); };
@@ -1218,7 +1434,7 @@ function svgHoja(C, h, N) {
     s += `<g><title>${esc(op.op)} · ${esc(op.ruta)} · ${esc(pz.meta.n.pieza)} (CAL ${C.cal})</title><path d="${d}" fill="${col}" fill-opacity=".38" fill-rule="evenodd" stroke="${col}" stroke-width="2.2"/>${mk ? `<path d="${mk}" fill="none" stroke="var(--marca)" stroke-width="2"/>` : ""}</g>`;
   }
   s += `</g>`;
-  if (h.recuperable) s += `<text x="${h.usado + h.retazo / 2}" y="${A / 2}" text-anchor="middle" font-size="48" fill="var(--ok)" font-family="system-ui">Retazo ${fmt(A, 0)} × ${fmt(h.retazo, 0)} mm</text>`;
+  if (h.recuperable) s += `<text x="${h.usado + h.retazo / 2}" y="${A / 2}" text-anchor="middle" font-size="${Math.min(48, h.retazo / 8)}" fill="var(--ok)" font-family="system-ui">${esc(h.idRetazo || "Retazo")} · ${fmt(A, 0)} × ${fmt(h.retazo, 0)} mm</text>`;
   return s + `</svg>`;
 }
 
@@ -1229,61 +1445,65 @@ function vistaNid(filas) {
   if (!filas) { el.innerHTML = `<div class="card empty"><b>🧩 Nidos de corte</b>Carga el programa y lee la biblioteca para generar los nidos.</div>`; return; }
   const P = paramsNid();
   const listas = filas.reduce((s, f) => s + f.piezas.filter(p => p.res.sev === "ok" || p.res.sev === "warn").reduce((a, p) => a + p.total, 0), 0);
+  const siNo = (id, v, t) => `<label>${t}<select id="${id}"><option value="1" ${v ? "selected" : ""}>Sí</option><option value="0" ${!v ? "selected" : ""}>No</option></select></label>`;
   let h = `<div class="card" style="padding:12px 14px"><div class="params">
       <label>Separación (mm)<input id="pSep" type="number" min="0.5" step="0.5" value="${P.sep}"></label>
       <label>Margen orilla (mm)<input id="pMar" type="number" min="0" step="1" value="${P.margen}"></label>
       <label>Giro de piezas<select id="pGiro"><option value="1" ${P.giro ? "selected" : ""}>Cada 90°</option><option value="0" ${!P.giro ? "selected" : ""}>Sin girar</option></select></label>
       <label>Precisión<select id="pRes">${[[1, "Fina (1 mm)"], [1.5, "Normal (1.5 mm)"], [2, "Rápida (2 mm)"]].map(([v, t]) => `<option value="${v}" ${+P.res === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
       <label>Retazo mínimo (mm)<input id="pRet" type="number" min="0" step="50" value="${P.minRetazo}"></label>
+      ${siNo("pGrab", P.grabarRuta, "Grabar ruta en piezas")}
+      ${siNo("pUsaR", P.usarRetazos, "Usar retazos primero")}
       <span style="flex:1"></span>
-      ${N ? `<button id="bExpNid">⬇️ Excel</button>` : ""}<button id="bNid" class="pri" ${listas ? "" : "disabled"}>🧩 Generar nidos</button></div>
-      <p class="note">Lámina 4×10 (${fmt(LAMINA.H, 0)} × ${fmt(LAMINA.W, 1)} mm) · máximo aprovechamiento: se mezclan todas las OPs de cada calibre y las piezas se cargan hacia un extremo para dejar el sobrante como tira rectangular. ${fmt(listas)} piezas listas para anidar.</p></div>`;
+      ${N ? `<button id="bExpNid">⬇️ Excel</button>` : ""}<button id="bNid" class="${N ? "" : "pri"}" ${listas ? "" : "disabled"}>🧩 ${N ? "Volver a generar" : "Generar nidos"}</button>
+      ${N ? `<button id="bPub" class="pri">📤 Publicar para corte</button>` : ""}</div>
+      <p class="note">Lámina 4×10 (${fmt(LAMINA.H, 0)} × ${fmt(LAMINA.W, 1)} mm) · se mezclan las OPs de cada calibre y las piezas se cargan hacia un extremo para dejar el sobrante como tira rectangular. ${fmt(listas)} piezas listas para anidar.</p></div>`;
   if (!N) { el.innerHTML = h + `<div class="card empty"><b>Sin nidos generados</b>Revisa los parámetros y presiona 🧩 Generar nidos.</div>`; ligarNid(filas); return; }
 
-  const totH = N.cals.reduce((s, C) => s + C.hojas.length, 0);
-  h += `<div class="card tw"><table><thead><tr><th>Calibre</th><th class="num">Piezas</th><th class="num">Láminas</th><th class="num">Hojas consumidas</th><th class="num">Kg reales</th><th class="num">Aprovechamiento</th><th>Retazo final</th><th class="muted">Cálculo</th></tr></thead><tbody>`;
+  h += `<div class="card tw"><table><thead><tr><th>Calibre</th><th class="num">Piezas</th><th class="num">Láminas</th><th class="num">Hojas consumidas</th><th class="num">Kg reales</th><th class="num">Aprovechamiento</th><th>Retazos</th><th class="muted">Cálculo</th></tr></thead><tbody>`;
   for (const C of N.cals) {
-    const u = C.hojas[C.hojas.length - 1], np = C.r.hojas.reduce((s, x) => s + x.pl.length, 0);
+    const np = C.r.hojas.reduce((s, x) => s + x.pl.length, 0);
+    const usa = C.hojas.filter(x => x.retazoId).map(x => x.retazoId), gen = C.hojas.filter(x => x.recuperable);
     h += `<tr><td><b>CAL ${C.cal}</b></td><td class="num">${fmt(np)}</td><td class="num">${C.hojas.length}</td><td class="num"><b>${fmt(C.totalHojas, 2)}</b></td><td class="num">${fmt(C.totalHojas * pesoHoja(C.cal), 1)}</td>
       <td class="num">${chipEstado(C.aprov >= .75 ? "ok" : C.aprov >= .55 ? "warn" : "err", fmt(C.aprov * 100, 1) + " %")}</td>
-      <td>${u && u.recuperable ? `♻️ ${fmt(LAMINA.W, 0)} × ${fmt(u.retazo, 0)} mm (${fmt(u.retazo / LAMINA.H, 2)} hoja)` : `<span class="muted">sin retazo recuperable</span>`}</td>
+      <td>${usa.length ? `♻️ usa ${usa.map(esc).join(", ")}<br>` : ""}${gen.length ? gen.map(x => `➕ ${esc(x.idRetazo)} (${fmt(x.A, 0)} × ${fmt(x.retazo, 0)})`).join("<br>") : (usa.length ? "" : `<span class="muted">—</span>`)}</td>
       <td class="muted">${fmt(C.r.ms / 1000, 1)} s · orden por ${esc(C.r.estrategia)}${C.r.sinColocar.length ? ` · ❌ ${C.r.sinColocar.length} sin colocar` : ""}</td></tr>`;
   }
   h += `</tbody></table></div>`;
   if (N.excluidas.length) h += `<p class="note">❌ No se anidaron ${fmt(N.excluidas.reduce((s, x) => s + x.p.total, 0))} piezas porque su dibujo tiene errores: ${[...new Set(N.excluidas.map(x => x.f.op.ruta + " · " + x.p.meta.n.pieza))].map(esc).join(", ")}.</p>`;
 
   for (const C of N.cals) {
-    h += `<details class="card" ${N.cals.length === 1 || C === N.cals[0] ? "open" : ""}><summary>🧩 CAL ${C.cal} <span class="sub">${C.hojas.length} lámina(s) · ${fmt(C.aprov * 100, 1)} % aprovechamiento</span></summary><div class="body">`;
+    h += `<details class="card"><summary>🧩 CAL ${C.cal} <span class="sub">${C.hojas.length} lámina(s) · ${fmt(C.aprov * 100, 1)} % aprovechamiento · vista previa</span></summary><div class="body">`;
     for (const hj of C.hojas) {
       const opsH = [...hj.porOp.entries()].sort((a, b) => b[1].area - a[1].area);
-      h += `<div class="hoja"><div class="hd"><b>CAL ${C.cal} · Lámina ${hj.n} de ${C.hojas.length}</b>
+      h += `<div class="hoja"><div class="hd"><b class="mono">${esc(hj.id)}</b>
+        ${hj.retazoId ? `<span class="st ok">♻️ sobre retazo ${esc(hj.retazoId)} (${fmt(hj.L, 0)} mm)</span>` : ""}
         <span class="chip">${hj.pl.length} piezas</span><span class="chip">${fmt(hj.aprov * 100, 1)} % aprov.</span>
-        <span class="chip">${hj.consumo < 1 ? `consumo ${fmt(hj.consumo, 2)} hoja` : "hoja completa"}</span>
-        ${hj.recuperable ? `<span class="st ok">♻️ retazo ${fmt(LAMINA.W, 0)} × ${fmt(hj.retazo, 0)} mm</span>` : ""}
-        <span class="chip">⏳ Pendiente</span></div>
-        ${svgHoja(C, hj, N)}
+        <span class="chip">consumo ${fmt(hj.consumo, 2)} hoja</span>
+        ${hj.recuperable ? `<span class="st ok">➕ genera ${esc(hj.idRetazo)}</span>` : ""}
+        <span style="flex:1"></span><button class="bDxf" data-c="${esc(C.cal)}" data-n="${hj.n}" title="Descargar para probar en CypCut (no registra corte)">⬇️ DXF</button></div>
+        ${svgHoja(C, hj, N, 260)}
         <div class="ops">${opsH.map(([oi, o]) => `<span title="${esc(N.ops[oi].desc)}"><i style="background:${PALETA[oi % PALETA.length]}"></i><b class="mono">${esc(N.ops[oi].op)}</b> ${esc(N.ops[oi].ruta)} · ${o.piezas} pz</span>`).join("")}</div></div>`;
     }
     h += `</div></details>`;
   }
 
-  // consumo real por OP
   const filasOP = [...N.porOP.values()].sort((a, b) => a.oi - b.oi || (a.cal - b.cal));
-  h += `<details class="card" open><summary>📦 Consumo real por OP <span class="sub">las láminas se reparten entre sus OPs en proporción al área de sus piezas, incluido el scrap</span></summary><div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Área neta m²</th><th class="num">Hojas reales</th><th class="num">Kg reales</th><th class="num">Kg / mueble</th><th>Láminas</th></tr></thead><tbody>`;
+  h += `<details class="card"><summary>📦 Consumo real por OP <span class="sub">${fmt(filasOP.reduce((s, x) => s + x.hojas, 0), 3)} hojas · ${fmt(filasOP.reduce((s, x) => s + x.hojas * pesoHoja(x.cal), 0), 1)} kg</span></summary><div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Hojas reales</th><th class="num">Kg reales</th><th class="num">Kg / mueble</th></tr></thead><tbody>`;
   for (const x of filasOP) {
     const o = N.ops[x.oi], kg = x.hojas * pesoHoja(x.cal);
-    h += `<tr><td class="mono"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${PALETA[x.oi % PALETA.length]};margin-right:5px"></i>${esc(o.op)}</td><td class="mono"><b>${esc(o.ruta)}</b></td><td>${esc(o.desc)}</td><td><span class="chip">CAL ${x.cal}</span></td>
-      <td class="num">${fmt(x.piezas)}</td><td class="num">${fmt(x.area, 3)}</td><td class="num"><b>${fmt(x.hojas, 3)}</b></td><td class="num">${fmt(kg, 2)}</td><td class="num">${fmt(kg / o.cant, 3)}</td><td class="muted">${[...x.laminas].sort((a, b) => a - b).map(n => "#" + n).join(" ")}</td></tr>`;
+    h += `<tr><td class="mono">${esc(o.op)}</td><td class="mono"><b>${esc(o.ruta)}</b></td><td>${esc(o.desc)}</td><td><span class="chip">CAL ${x.cal}</span></td>
+      <td class="num">${fmt(x.piezas)}</td><td class="num"><b>${fmt(x.hojas, 3)}</b></td><td class="num">${fmt(kg, 2)}</td><td class="num">${fmt(kg / o.cant, 3)}</td></tr>`;
   }
-  const tH = filasOP.reduce((s, x) => s + x.hojas, 0), tK = filasOP.reduce((s, x) => s + x.hojas * pesoHoja(x.cal), 0);
-  h += `<tr style="border-top:2px solid var(--line)"><td colspan="6"><b>Total</b></td><td class="num"><b>${fmt(tH, 3)}</b></td><td class="num"><b>${fmt(tK, 2)}</b></td><td></td><td></td></tr></tbody></table></div></details>`;
+  h += `</tbody></table></div></details>`;
   el.innerHTML = h;
   ligarNid(filas);
 }
 
 function ligarNid(filas) {
-  const guardar = () => ls.set("nl_nest", JSON.stringify({ sep: +$("#pSep").value || NID_DEF.sep, margen: +$("#pMar").value || 0, giro: $("#pGiro").value === "1", res: +$("#pRes").value, minRetazo: +$("#pRet").value || 0 }));
-  ["#pSep", "#pMar", "#pGiro", "#pRes", "#pRet"].forEach(id => { const e = $(id); if (e) e.onchange = guardar; });
+  const guardar = () => ls.set("nl_nest", JSON.stringify({ sep: +$("#pSep").value || NID_DEF.sep, margen: +$("#pMar").value || 0, giro: $("#pGiro").value === "1",
+    res: +$("#pRes").value, minRetazo: +$("#pRet").value || 0, grabarRuta: $("#pGrab").value === "1", usarRetazos: $("#pUsaR").value === "1" }));
+  ["#pSep", "#pMar", "#pGiro", "#pRes", "#pRet", "#pGrab", "#pUsaR"].forEach(id => { const e = $(id); if (e) e.onchange = guardar; });
   const be = $("#bExpNid"); if (be) be.onclick = () => exportarExcel(filas, listaPendientes(filas));
   const b = $("#bNid");
   if (b) b.onclick = async () => {
@@ -1291,6 +1511,208 @@ function ligarNid(filas) {
     try { S.nidos = await generarNidos(filas); } catch (e) { progreso(null); alert("Nidos: " + e.message); }
     render();
   };
+  document.querySelectorAll(".bDxf").forEach(bt => bt.onclick = () => {
+    const N = S.nidos, C = N.cals.find(c => String(c.cal) === bt.dataset.c), hj = C.hojas.find(x => x.n === +bt.dataset.n);
+    try { descargarTexto("PRUEBA_" + hj.archivo, dxfDeHoja(N, C, hj)); } catch (e) { alert("DXF: " + e.message); }
+  });
+  const bp = $("#bPub"); if (bp) bp.onclick = () => publicarNidos(bp);
+}
+
+/* ============================== SERVIDOR (Sheet + Drive) ============================== */
+const servidorConfigurado = () => !!(ls.get("nl_url", "") || URL_DEFAULT);
+async function cargarEstado() { const d = await jsonp({ accion: "estado" }, 90000); S.estado = d; S.estadoHora = new Date(); return d; }
+/** POST sin CORS (el Apps Script recibe el cuerpo; la respuesta se confirma luego con "estado") */
+async function postServidor(obj) {
+  const url = (ls.get("nl_url", "") || URL_DEFAULT).trim(), tok = ls.get("nl_tok", "");
+  await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(tok ? { ...obj, token: tok } : obj) });
+}
+
+async function publicarNidos(btn) {
+  const N = S.nidos; if (!N) return;
+  const total = N.cals.reduce((s, C) => s + C.hojas.length, 0);
+  if (!confirm(`Publicar ${total} nido(s) del programa ${N.programa || ""} para corte.\n\nSe guardan los DXF en Drive y el operador los verá en ✂️ Corte.`)) return;
+  btn.disabled = true;
+  try {
+    progreso("Revisando inventario de retazos…", 0.02);
+    await cargarEstado();
+    const disp = new Set(S.estado.retazos.filter(r => r.estado === "disponible").map(r => r.id));
+    const faltan = N.cals.flatMap(C => C.hojas.filter(h => h.retazoId && !disp.has(h.retazoId)).map(h => h.retazoId));
+    if (faltan.length) throw new Error(`Los retazos ${faltan.join(", ")} ya no están disponibles. Vuelve a generar los nidos.`);
+    if (S.estado.nidos.some(n => n.programaId === N.id)) throw new Error(`El programa ${N.id} ya fue publicado.`);
+    const opsTot = N.ops.map(o => ({ ...o }));
+    await postServidor({ accion: "guardarPrograma", programa: { id: N.id, nombre: N.programa, creado: N.generado.toISOString(), ops: opsTot, nidos: total, params: N.params } });
+    let k = 0;
+    for (const C of N.cals) for (const h of C.hojas) {
+      progreso(`Publicando ${h.id} (${++k} de ${total})`, k / total);
+      const ops = {};
+      for (const [oi, o] of h.porOp) ops[N.ops[oi].op] = { ruta: N.ops[oi].ruta, pz: o.piezas, area: +o.area.toFixed(5), hojas: +(h.consumo * o.area / h.area).toFixed(5) };
+      const nido = { id: h.id, programaId: N.id, calibre: C.cal, n: h.n, total: C.hojas.length, piezas: h.pl.length, area: +h.area.toFixed(5), consumo: +h.consumo.toFixed(5),
+        aprov: +h.aprov.toFixed(4), largo: h.L, retazoUsado: h.retazoId || "", creado: N.generado.toISOString(), archivo: h.archivo, ops,
+        retazoNuevo: h.recuperable ? { id: h.idRetazo, ancho: +h.A.toFixed(1), largo: Math.round(h.retazo), fraccion: +(h.retazo / LAMINA.H).toFixed(4), kg: +(h.retazo / LAMINA.H * pesoHoja(C.cal)).toFixed(2) } : null };
+      await postServidor({ accion: "guardarNido", nido, dxf: dxfDeHoja(N, C, h) });
+    }
+    progreso("Confirmando…", 1);
+    let ok = 0;
+    for (let i = 0; i < 6; i++) { await cargarEstado(); ok = S.estado.nidos.filter(n => n.programaId === N.id).length; if (ok >= total) break; await new Promise(r => setTimeout(r, 2000)); }
+    progreso(null);
+    if (ok < total) alert(`Se confirmaron ${ok} de ${total} nidos. Revisa la conexión y vuelve a publicar (los ya guardados no se duplican).`);
+    else { alert(`✅ Programa ${N.id} publicado: ${total} nidos listos en ✂️ Corte.`); ls.set("nl_progCorte", N.id); }
+  } catch (e) { progreso(null); alert("Publicar: " + e.message); }
+  btn.disabled = false;
+}
+
+/* ============================== VISTA DE CORTE (operador) ============================== */
+const EST = { "pendiente": ["⏳", "Faltante por cortar", "info"], "en proceso": ["🔥", "En proceso de corte", "warn"], "cortado": ["✅", "Cortado", "ok"] };
+const chipNido = e => { const x = EST[e] || ["", e, "info"]; return `<span class="st ${x[2]}">${x[0]} ${x[1]}</span>`; };
+const fmtHora = s => s ? new Date(s).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+const jsonOps = s => { try { return typeof s === "string" ? JSON.parse(s || "{}") : (s || {}); } catch { return {}; } };
+
+function vistaCorte() {
+  const el = $("#corte");
+  const E = S.estado;
+  if (!E) { el.innerHTML = `<div class="card empty"><b>✂️ Corte</b>${S.cargandoEstado ? "Cargando programas…" : "Presiona 🔄 Actualizar para ver los nidos publicados."}<div style="margin-top:10px"><button id="bEst" class="pri">🔄 Actualizar</button></div></div>`; $("#bEst").onclick = refrescarCorte; return; }
+  const progs = E.programas.slice().sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
+  let pid = ls.get("nl_progCorte", ""); if (!progs.some(p => p.id === pid)) pid = progs[0] ? progs[0].id : "";
+  const prog = progs.find(p => p.id === pid);
+  const nidos = E.nidos.filter(n => n.programaId === pid).sort((a, b) => (+a.calibre - +b.calibre) || (+a.n - +b.n));
+  const enProc = E.nidos.find(n => n.estado === "en proceso");
+  const cuenta = e => nidos.filter(n => n.estado === e).length;
+  const quien = ls.get("nl_quien", "");
+  let h = `<div class="card" style="padding:12px 14px"><div class="params">
+      <label>Programa<select id="cProg" style="width:auto;min-width:260px">${progs.map(p => `<option value="${esc(p.id)}" ${p.id === pid ? "selected" : ""}>${esc(p.id)} · ${esc(p.nombre)}</option>`).join("")}</select></label>
+      <label>Operador<input id="cQuien" type="text" value="${esc(quien)}" placeholder="nombre"></label>
+      <span style="flex:1"></span><span class="muted">Actualizado ${S.estadoHora ? S.estadoHora.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+      ${prog && nidos.every(n => n.estado === "pendiente") ? `<button id="bElim" title="Solo si ningún nido se ha empezado a cortar">🗑️ Eliminar programa</button>` : ""}
+      <button id="bEst">🔄 Actualizar</button></div></div>`;
+  if (!prog) { el.innerHTML = h + `<div class="card empty"><b>Sin programas publicados</b>En 🗂️ Planeación genera los nidos y presiona 📤 Publicar para corte.</div>`; ligarCorte(); return; }
+
+  const tot = nidos.length || 1;
+  h += `<div class="kpis">
+    <div class="kpi ok"><div class="v">${cuenta("cortado")}</div><div class="l">✅ nidos cortados</div><div class="bar"><i style="width:${cuenta("cortado") / tot * 100}%"></i></div></div>
+    <div class="kpi warn"><div class="v">${cuenta("en proceso")}</div><div class="l">🔥 en proceso de corte</div></div>
+    <div class="kpi"><div class="v">${cuenta("pendiente")}</div><div class="l">⏳ faltantes por cortar</div></div>
+    <div class="kpi"><div class="v">${fmt(nidos.reduce((s, n) => s + Number(n.consumo || 0), 0), 2)}</div><div class="l">hojas del programa</div></div></div>`;
+
+  // nido en proceso
+  if (enProc) {
+    const min = (Date.now() - new Date(enProc.inicio)) / 60000;
+    h += `<div class="card" style="padding:12px 14px;border-color:var(--warn)"><div class="hd" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:26px;font-weight:800">CAL ${esc(enProc.calibre)}</span>${chipNido("en proceso")}<b class="mono">${esc(enProc.id)}</b>
+      <span class="muted">desde ${fmtHora(enProc.inicio)} · ${fmt(min, 0)} min</span>${enProc.retazoUsado ? `<span class="st ok">♻️ sobre retazo ${esc(enProc.retazoUsado)}</span>` : ""}
+      <span style="flex:1"></span><button class="bBaj" data-id="${esc(enProc.id)}">⬇️ Bajar otra vez</button><button id="bTerm" class="pri">✅ Terminar corte</button></div>
+      <p class="note">Al descargar el siguiente nido este se marca como cortado automáticamente. Usa ✅ Terminar corte en el último nido o al final del turno.</p></div>`;
+  }
+
+  // nidos por calibre
+  const cals = [...new Set(nidos.map(n => String(n.calibre)))];
+  const sig = nidos.find(n => n.estado === "pendiente");
+  for (const c of cals) {
+    const ns = nidos.filter(n => String(n.calibre) === c), hechos = ns.filter(n => n.estado === "cortado").length;
+    h += `<details class="card" ${ns.some(n => n.estado !== "cortado") ? "open" : ""}><summary>🧩 CAL ${esc(c)} <span class="sub">${hechos} de ${ns.length} cortados</span></summary><div class="body tw"><table><thead><tr><th>Lámina</th><th>Estado</th><th>Nido</th><th class="num">Piezas</th><th>OPs</th><th class="num">Aprov.</th><th>Retazo</th><th>Inicio / fin</th><th></th></tr></thead><tbody>`;
+    for (const n of ns) {
+      const ops = jsonOps(n.ops);
+      h += `<tr${sig && n.id === sig.id && !enProc ? ' style="background:var(--warn-bg)"' : ""}><td><b>${n.n} de ${n.total}</b></td><td>${chipNido(n.estado)}</td><td class="mono">${esc(n.id)}</td><td class="num">${n.piezas}</td>
+        <td>${Object.entries(ops).map(([op, o]) => `<span class="chip" title="${esc(o.ruta)}">${esc(op)} · ${o.pz}</span>`).join(" ")}</td><td class="num">${fmt(Number(n.aprov) * 100, 1)} %</td>
+        <td>${n.retazoUsado ? `♻️ toma <b>${esc(n.retazoUsado)}</b>` : ""}${n.retazoNuevo ? `${n.retazoUsado ? "<br>" : ""}➕ deja ${esc(n.retazoNuevo)}` : ""}</td>
+        <td class="muted">${n.inicio ? fmtHora(n.inicio) : ""}${n.fin ? " → " + fmtHora(n.fin) + ` (${fmt(n.minutos, 0)} min)` : ""}</td>
+        <td style="white-space:nowrap"><button class="bBaj ${n.estado === "pendiente" ? "pri" : ""}" data-id="${esc(n.id)}">${n.estado === "pendiente" ? "⬇️ Descargar y cortar" : "⬇️ Bajar otra vez"}</button>
+        ${n.estado !== "pendiente" ? `<button class="bRev" data-id="${esc(n.id)}" title="Regresar a faltante por cortar">↩️</button>` : ""}</td></tr>`;
+    }
+    h += `</tbody></table></div></details>`;
+  }
+
+  // OPs
+  const porOP = new Map();
+  for (const op of jsonOps(prog.ops)) porOP.set(op.op, { ...op, pz: 0, cortadas: 0, proceso: 0, hojas: 0, cal: new Set() });
+  for (const n of nidos) for (const [op, o] of Object.entries(jsonOps(n.ops))) {
+    const x = porOP.get(op) || { op, ruta: o.ruta, desc: "", cant: 0, pz: 0, cortadas: 0, proceso: 0, hojas: 0, cal: new Set() };
+    x.pz += o.pz; x.hojas += o.hojas; x.cal.add(n.calibre); x.kg = (x.kg || 0) + o.hojas * pesoHoja(+n.calibre);
+    if (n.estado === "cortado") x.cortadas += o.pz; else if (n.estado === "en proceso") x.proceso += o.pz;
+    porOP.set(op, x);
+  }
+  const L = [...porOP.values()].filter(x => x.pz);
+  const estOP = x => x.cortadas === x.pz ? "cortado" : (x.proceso || x.cortadas) ? "en proceso" : "pendiente";
+  h += `<details class="card" open><summary>📋 OPs del programa <span class="sub">${L.filter(x => estOP(x) === "cortado").length} cortadas · ${L.filter(x => estOP(x) === "en proceso").length} en proceso · ${L.filter(x => estOP(x) === "pendiente").length} faltantes</span></summary>
+    <div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Estado</th><th class="num">Piezas láser</th><th class="num">Cortadas</th><th style="width:120px">Avance</th><th>Calibres</th><th class="num">Hojas</th><th class="num">Kg</th><th class="num">Kg / mueble</th></tr></thead><tbody>`;
+  for (const x of L.sort((a, b) => ["en proceso", "pendiente", "cortado"].indexOf(estOP(a)) - ["en proceso", "pendiente", "cortado"].indexOf(estOP(b)))) {
+    h += `<tr><td class="mono">${esc(x.op)}</td><td class="mono"><b>${esc(x.ruta)}</b></td><td>${esc(x.desc)}</td><td>${chipNido(estOP(x))}</td><td class="num">${fmt(x.pz)}</td><td class="num">${fmt(x.cortadas)}</td>
+      <td><div class="bar" style="margin:6px 0 0"><i style="width:${x.cortadas / x.pz * 100}%"></i></div></td><td>${[...x.cal].map(c => `<span class="chip">${esc(c)}</span>`).join("")}</td>
+      <td class="num">${fmt(x.hojas, 3)}</td><td class="num">${fmt(x.kg || 0, 2)}</td><td class="num">${x.cant ? fmt((x.kg || 0) / x.cant, 3) : "—"}</td></tr>`;
+  }
+  h += `</tbody></table></div></details>`;
+
+  // Retazos
+  const R = E.retazos;
+  const grupo = e => R.filter(r => r.estado === e);
+  const sumF = arr => arr.reduce((s, r) => s + Number(r.fraccion || 0), 0);
+  const gen = R.filter(r => r.estado !== "por cortar"), usados = grupo("usado"), desc = grupo("descartado"), disp = grupo("disponible"), asig = grupo("asignado");
+  h += `<details class="card" open><summary>♻️ Inventario de retazos <span class="sub">${disp.length} disponibles · ${fmt(sumF(disp), 2)} hojas equivalentes</span></summary><div class="body">
+    <div class="kpis" style="margin-top:4px">
+      <div class="kpi"><div class="v">${gen.length}</div><div class="l">generados · ${fmt(sumF(gen), 2)} hojas</div></div>
+      <div class="kpi ok"><div class="v">${usados.length}</div><div class="l">reutilizados · ${fmt(sumF(usados), 2)} hojas</div></div>
+      <div class="kpi"><div class="v">${disp.length + asig.length}</div><div class="l">en rack (${asig.length} asignados)</div></div>
+      <div class="kpi err"><div class="v">${desc.length}</div><div class="l">descartados · ${fmt(sumF(desc), 2)} hojas</div></div>
+      <div class="kpi ${gen.length ? "ok" : ""}"><div class="v">${gen.length ? fmt(sumF(usados) / sumF(gen) * 100, 0) + " %" : "—"}</div><div class="l">aprovechamiento de retazos</div></div></div>
+    <div class="tw"><table><thead><tr><th>Retazo</th><th>Estado</th><th>Calibre</th><th class="num">Medida mm</th><th class="num">Hoja eq.</th><th class="num">Kg</th><th>Origen</th><th>Uso</th><th></th></tr></thead><tbody>`;
+  const ordenR = ["disponible", "asignado", "por cortar", "usado", "descartado"];
+  const colR = { disponible: "ok", asignado: "warn", "por cortar": "info", usado: "info", descartado: "err" };
+  for (const r of R.slice().sort((a, b) => ordenR.indexOf(a.estado) - ordenR.indexOf(b.estado) || (+a.calibre - +b.calibre) || String(a.id).localeCompare(String(b.id))).slice(0, 200)) {
+    h += `<tr><td class="mono"><b>${esc(r.id)}</b></td><td><span class="st ${colR[r.estado] || "info"}">${esc(r.estado)}</span></td><td>CAL ${esc(r.calibre)}</td><td class="num">${fmt(r.ancho, 0)} × ${fmt(r.largo, 0)}</td>
+      <td class="num">${fmt(r.fraccion, 2)}</td><td class="num">${fmt(r.kg, 1)}</td><td class="mono muted">${esc(r.nidoOrigen)}</td><td class="mono muted">${esc(r.nidoUso || "")}</td>
+      <td>${r.estado === "disponible" || r.estado === "asignado" ? `<button class="bDesc" data-id="${esc(r.id)}" title="El retazo no está o está dañado">🗑️ No está</button>` : ""}</td></tr>`;
+  }
+  h += `</tbody></table></div><p class="note">Un retazo pasa a <b>disponible</b> cuando se corta el nido que lo genera, y los siguientes nidos del mismo calibre lo usan antes que una lámina nueva. Cada retazo lleva su ID grabado.</p></div></details>`;
+  el.innerHTML = h;
+  ligarCorte();
+}
+
+function ligarCorte() {
+  const q = () => ($("#cQuien") ? $("#cQuien").value.trim() : "");
+  const b = $("#bEst"); if (b) b.onclick = refrescarCorte;
+  const sp = $("#cProg"); if (sp) sp.onchange = () => { ls.set("nl_progCorte", sp.value); vistaCorte(); };
+  const qi = $("#cQuien"); if (qi) qi.onchange = () => ls.set("nl_quien", qi.value.trim());
+  document.querySelectorAll(".bBaj").forEach(bt => bt.onclick = () => descargarNido(bt.dataset.id, q(), bt));
+  document.querySelectorAll(".bRev").forEach(bt => bt.onclick = async () => {
+    if (!confirm(`¿Regresar ${bt.dataset.id} a "faltante por cortar"?`)) return;
+    try { const d = await jsonp({ accion: "revertir", id: bt.dataset.id, quien: q() }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+  });
+  document.querySelectorAll(".bDesc").forEach(bt => bt.onclick = async () => {
+    if (!confirm(`¿Marcar el retazo ${bt.dataset.id} como descartado? Ya no se usará en nidos nuevos.`)) return;
+    try { const d = await jsonp({ accion: "descartarRetazo", id: bt.dataset.id, quien: q() }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+  });
+  const be = $("#bElim"); if (be) be.onclick = async () => {
+    const id = $("#cProg").value;
+    if (!confirm(`¿Eliminar el programa ${id}? Se borran sus nidos (DXF a la papelera) y se liberan los retazos que tenía asignados.`)) return;
+    try { const d = await jsonp({ accion: "eliminarPrograma", id }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+  };
+  const bt = $("#bTerm"); if (bt) bt.onclick = async () => {
+    if (!confirm("¿Marcar el nido en proceso como cortado?")) return;
+    try { const d = await jsonp({ accion: "terminar", quien: q() }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+  };
+}
+
+async function descargarNido(id, quien, btn) {
+  const n = S.estado.nidos.find(x => x.id === id), act = S.estado.nidos.find(x => x.estado === "en proceso");
+  if (n.estado === "pendiente") {
+    let msg = `Descargar ${id} (CAL ${n.calibre}, lámina ${n.n} de ${n.total}) y marcarlo EN PROCESO DE CORTE.`;
+    if (act && act.id !== id) msg += `\n\nEl nido ${act.id} se marcará como CORTADO.`;
+    if (act && String(act.calibre) !== String(n.calibre)) msg += `\n\n⚠️ CAMBIO DE CALIBRE: ${act.calibre} → ${n.calibre}. Carga lámina y parámetros de calibre ${n.calibre}.`;
+    if (n.retazoUsado) msg += `\n\n♻️ Este nido va sobre el retazo ${n.retazoUsado}: tómalo del rack.`;
+    if (!confirm(msg)) return;
+  }
+  btn.disabled = true;
+  try {
+    const d = await jsonp({ accion: "descargar", id, quien }, 120000);
+    descargarTexto(d.archivo || id + ".dxf", b64ToBytes(d.dxf));
+    S.estado = d.estado; S.estadoHora = new Date();
+  } catch (e) { alert("Descarga: " + e.message); }
+  vistaCorte();
+}
+
+async function refrescarCorte() {
+  S.cargandoEstado = true; if (!S.estado) vistaCorte();
+  try { await cargarEstado(); } catch (e) { alert("No se pudo leer el estado: " + e.message); }
+  S.cargandoEstado = false; vistaCorte();
 }
 
 function vistaPen(filas) {
@@ -1640,10 +2062,21 @@ $("#bTema").onclick = () => {
 $("#dlgX").onclick = () => $("#dlg").close();
 $("#dlg").onclick = e => { if (e.target.id === "dlg") $("#dlg").close(); };
 
+function ponerModo(m) {
+  document.querySelectorAll(".modo button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  $("#plan").classList.toggle("hide", m !== "plan"); $("#corte").classList.toggle("hide", m !== "corte");
+  document.body.classList.toggle("mcorte", m === "corte");
+  ls.set("nl_modo", m); if (location.hash !== "#" + m) history.replaceState(null, "", "#" + m);
+  if (m === "corte") { vistaCorte(); if (!S.estado && !S.cargandoEstado) refrescarCorte(); }
+}
+document.querySelectorAll(".modo button").forEach(b => b.onclick = () => ponerModo(b.dataset.m));
+setInterval(() => { if (document.body.classList.contains("mcorte") && !document.hidden && !S.cargandoEstado) cargarEstado().then(vistaCorte).catch(() => {}); }, 60000);
+
 (function init() {
   const t = ls.get("nl_tema", ""); if (t) document.documentElement.dataset.theme = t;
   syncCfg();
   const tab = ls.get("nl_tab", "ops"); const bt = document.querySelector(`.tab[data-t="${tab}"]`); if (bt) bt.click();
+  ponerModo(location.hash === "#corte" ? "corte" : location.hash === "#plan" ? "plan" : ls.get("nl_modo", "plan"));
   render();
 })();
 </script>

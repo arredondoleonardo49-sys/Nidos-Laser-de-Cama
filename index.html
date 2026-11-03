@@ -392,6 +392,7 @@ const URL_DEFAULT = "https://script.google.com/macros/s/AKfycbyM9Stpc1fB97aRf0o5
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const fmt = (n, d = 0) => Number(n).toLocaleString("es-MX", { minimumFractionDigits: d, maximumFractionDigits: d });
+const fechaLocal = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");   // AAAA-MM-DD en hora de planta
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
 const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
@@ -411,6 +412,7 @@ const S = {
   analisis: new Map(),   // fileId → resultado
   local: new Map(),      // fileId → bytes (modo local)
   metas: new Map(),      // fileId → meta de los archivos revisados
+  corteAbiertos: new Map(), // secciones de ✂️ Corte que el operador abrió o cerró
 };
 
 /* ============================== CACHÉ (IndexedDB) ============================== */
@@ -614,14 +616,14 @@ function aPolilinea(e) {
       if (fit.length >= 2) return { pts: fit, cerrada };
       return { soporte: false, motivo: "Spline sin puntos" };
     }
-    case "ELLIPSE": {
+    case "ELLIPSE": {                              // centro y eje mayor vienen en WCS: con extrusión −Z solo se invierte el eje menor
       const cx = f(10), cy = f(20), mx = f(11), my = f(21), ra = f(40), p0 = f(41, 0), p1 = f(42, 2 * Math.PI);
-      const a = Math.hypot(mx, my), b = a * ra, rot = Math.atan2(my, mx);
+      const a = Math.hypot(mx, my), b = a * ra * (espejo ? -1 : 1), rot = Math.atan2(my, mx);
       let dp = p1 - p0; while (dp <= 0) dp += 2 * Math.PI;
       const n = Math.min(1440, Math.max(16, Math.ceil(dp / pasoAng(Math.max(a, 0.1))))), pts = [];
       for (let k = 0; k <= n; k++) { const t = p0 + dp * k / n, x = a * Math.cos(t), y = b * Math.sin(t); pts.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]); }
       const completa = Math.abs(dp - 2 * Math.PI) < 1e-6; if (completa) pts.pop();
-      return fin(pts, completa);
+      return { pts, cerrada: completa };
     }
     case "POINT": return { soporte: false, motivo: "Punto suelto", ignorar: true };
     case "TEXT": case "MTEXT": return { soporte: false, motivo: "Texto como fuente (debe ir en trazos)" };
@@ -687,6 +689,25 @@ function claveEnt(e, pl) {
   if (e.tipo === "LINE") { const a = pts[0].join(","), b = pts[1].join(","); return e.capa + "|L|" + [a, b].sort().join("|"); }
   return e.capa + "|" + e.tipo + "|" + pts.map(p => p.join(",")).join(";");
 }
+/** Trazos de marca que salen del material de la pieza (tolerancia sobre el contorno, para dobleces que tocan la orilla) */
+function marcasFuera(lazos, marcas, tol = 0.5) {
+  const info = lazos.map(p => ({ p, a: Math.abs(areaF(p)) }));
+  const ext = info.filter(L => !info.some(o => o !== L && o.a > L.a && dentro(L.p[0], o.p))).map(L => L.p);
+  const segs = lazos.flatMap(L => L.map((p, i) => [p, L[(i + 1) % L.length]]));
+  const enPieza = p => ext.some(E => dentro(p, E)) || segs.some(([a, b]) => distSeg(p, a, b) <= tol);
+  const fuera = new Set();
+  for (const q of marcas) {
+    const n = q.pts.length, paso = Math.max(1, Math.ceil(n / 60)), pts = [];
+    for (let i = 0; i < n; i += paso) {                // vértices y puntos medios: una línea puede cruzar una muesca
+      pts.push(q.pts[i]);
+      const j = i + 1 < n ? i + 1 : q.cerrada ? 0 : -1;
+      if (j >= 0) pts.push([(q.pts[i][0] + q.pts[j][0]) / 2, (q.pts[i][1] + q.pts[j][1]) / 2]);
+    }
+    pts.push(q.pts[n - 1]);
+    if (!pts.every(enPieza)) fuera.add(q);
+  }
+  return fuera;
+}
 
 function rolesUsuario() { try { return JSON.parse(ls.get("nl_roles", "{}")) || {}; } catch { return {}; } }
 
@@ -744,12 +765,25 @@ function analizar(dxf) {
     if (abiertos.length) add(errores, `${abiertos.length} contorno(s) abierto(s) en la capa de corte ${nc}`);
     if (!lazos.length) add(errores, "No se forma ningún contorno cerrado de corte");
   } else dibujo.sinCapa = lazos.concat(abiertos);
+  // marcas fuera de la pieza (marcos, cotas o textos sueltos): no se graban, porque en el nido caerían sobre otra pieza
+  if (corte.length && lazos.length && dibujo.marca.length) {
+    const fuera = marcasFuera(lazos, dibujo.marca);
+    if (fuera.size) {
+      dibujo.marca = dibujo.marca.filter(q => !fuera.has(q));
+      dibujo.marcaFuera = [...fuera];
+      res.exp = res.exp.filter(x => !fuera.has(x.pl));
+      res.largoMarca = dibujo.marca.reduce((s, q) => s + largo(q.pts, q.cerrada), 0);
+      const cs = [...new Set(dibujo.marcaFuera.map(q => `"${q.ent.capa}"`))].join(", ");
+      add(avisos, `${fuera.size} trazo(s) de marca fuera de la pieza en la capa ${cs}; no se graban en el nido`);
+    }
+  }
   // bbox
+  const caja = pts => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of pts) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; } return [x0, y0, x1, y1]; };
   const todos = (corte.length ? lazos : (dibujo.sinCapa || [])).flat().concat(dibujo.marca.flatMap(p => p.pts));
   if (todos.length) {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [x, y] of todos) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
-    res.bbox = [x0, y0, x1, y1]; res.ancho = x1 - x0; res.alto = y1 - y0;
+    const [x0, y0, x1, y1] = res.bbox = caja(todos);
+    res.ancho = x1 - x0; res.alto = y1 - y0;
+    if (dibujo.marcaFuera) res.bboxVista = caja(todos.concat(dibujo.marcaFuera.flatMap(q => q.pts)));
   }
   if (corte.length && lazos.length) {
     const info = lazos.map(p => ({ p, a: Math.abs(areaF(p)) })).sort((a, b) => b.a - a.a);
@@ -810,7 +844,8 @@ function leerPrograma(buf, nombre) {
   if (typeof XLSX === "undefined") throw new Error("No se cargó la librería de Excel (revisa la conexión a internet)");
   const wb = XLSX.read(buf, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const filas = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const filas = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null, blankrows: true });
+  const r0 = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]).s.r : 0;   // fila de Excel = r0 + índice + 1
   const hi = filas.findIndex(f => f && f.some(c => norm(c) === "N RUTA" || norm(c) === "NO RUTA" || norm(c) === "Nº RUTA".normalize("NFD")) );
   const idxH = hi >= 0 ? hi : filas.findIndex(f => f && f.some(c => /RUTA/.test(norm(c))));
   if (idxH < 0) throw new Error("No encontré la columna 'Nº ruta' en el archivo");
@@ -819,20 +854,31 @@ function leerPrograma(buf, nombre) {
   const cRuta = col(/^N.? ?RUTA$/, /RUTA/), cOp = col(/^N.?$/, /^NO\.?$/, /^N[º°O]$/), cCant = col(/^CANTIDAD$/),
         cDesc = col(/^DESCRIPCION$/), cIni = col(/FECHA-HORA INICIAL/, /INICIAL/), cCod = col(/PROCEDENCIA/);
   if (cCant < 0) throw new Error("No encontré la columna 'Cantidad'");
-  const ops = [];
-  for (const f of filas.slice(idxH + 1)) {
+  const ops = [], usadas = new Set();
+  let sinOp = 0, repetidas = 0;
+  for (let i = idxH + 1; i < filas.length; i++) {
+    const f = filas[i];
     if (!f) continue;
     const ruta = f[cRuta]; const cant = Number(f[cCant]);
     if (ruta == null || ruta === "" || !cant) continue;
     let ini = cIni >= 0 ? f[cIni] : null;
     if (typeof ini === "number") { const d = XLSX.SSF.parse_date_code(ini); ini = d ? new Date(d.y, d.m - 1, d.d, d.H, d.M, Math.round(d.S)) : null; }
-    ops.push({ op: cOp >= 0 ? String(f[cOp] ?? "") : "", ruta: String(ruta).trim().replace(/\.0+$/, ""), cant,
+    // la OP es la llave del consumo y del avance en Corte: nunca vacía ni repetida
+    let op = cOp >= 0 ? String(f[cOp] ?? "").trim() : "";
+    if (!op) { op = `FILA-${r0 + i + 1}`; sinOp++; }
+    if (usadas.has(op)) { let k = 2; while (usadas.has(`${op}-${k}`)) k++; op = `${op}-${k}`; repetidas++; }
+    usadas.add(op);
+    ops.push({ op, ruta: String(ruta).trim().replace(/\.0+$/, ""), cant,
                desc: cDesc >= 0 ? String(f[cDesc] ?? "").trim() : "", cod: cCod >= 0 ? String(f[cCod] ?? "") : "",
                inicio: ini instanceof Date && !isNaN(ini) ? ini : null });
   }
   if (!ops.length) throw new Error("El programa no tiene OPs con ruta y cantidad");
   ops.sort((a, b) => (a.inicio ? a.inicio.getTime() : Infinity) - (b.inicio ? b.inicio.getTime() : Infinity));
-  return { nombre, ops };
+  const avisos = [];
+  if (cOp < 0) avisos.push("El Excel no trae la columna Nº (OP): cada renglón se identifica como FILA-n (su fila en Excel)");
+  else if (sinOp) avisos.push(`${sinOp} renglón(es) sin número de OP: se identifican como FILA-n (su fila en Excel)`);
+  if (repetidas) avisos.push(`${repetidas} OP(s) repetidas en el Excel: la repetición se marca con -2, -3… para no mezclar su consumo`);
+  return { nombre, ops, avisos };
 }
 
 /* ============================== CARGA DE BIBLIOTECA ============================== */
@@ -929,7 +975,7 @@ const chipEstado = (sev, txt) => `<span class="st ${sev === "sincarpeta" || sev 
 function svgPieza(res, grande) {
   const d = res && res.dibujo;
   if (!d || !res.bbox) return `<span class="muted">sin vista</span>`;
-  const [x0, y0, x1, y1] = res.bbox, w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), m = Math.max(w, h) * 0.04;
+  const [x0, y0, x1, y1] = res.bboxVista || res.bbox, w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), m = Math.max(w, h) * 0.04;
   const sw = Math.max(w, h) / (grande ? 700 : 220);
   const path = (pts, cerr) => "M" + pts.map(p => (p[0] - x0 + m).toFixed(2) + " " + (y1 - p[1] + m).toFixed(2)).join("L") + (cerr ? "Z" : "");
   let s = `<svg viewBox="0 0 ${(w + 2 * m).toFixed(1)} ${(h + 2 * m).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" style="width:${grande ? "100%" : "auto"};height:${grande ? "100%" : "140px"}">`;
@@ -937,6 +983,7 @@ function svgPieza(res, grande) {
   for (const p of d.corte) s += `<path d="${path(p, true)}" stroke="var(--corte)"/>`;
   for (const p of d.sinCapa || []) s += `<path d="${path(p, false)}" stroke="var(--err)" stroke-dasharray="${sw * 6} ${sw * 4}"/>`;
   for (const p of d.marca) s += `<path d="${path(p.pts, p.cerrada)}" stroke="var(--marca)"/>`;
+  for (const p of d.marcaFuera || []) s += `<path d="${path(p.pts, p.cerrada)}" stroke="var(--err)" stroke-dasharray="${sw * 6} ${sw * 4}"/>`;
   for (const p of (d.corte.length ? d.abiertos : [])) {
     s += `<path d="${path(p, false)}" stroke="var(--err)" stroke-width="${(sw * 3).toFixed(3)}"/>`;
     for (const q of [p[0], p[p.length - 1]]) s += `<circle cx="${(q[0] - x0 + m).toFixed(2)}" cy="${(y1 - q[1] + m).toFixed(2)}" r="${(sw * 8).toFixed(2)}" stroke="var(--err)" stroke-width="${(sw * 2).toFixed(3)}"/>`;
@@ -983,10 +1030,11 @@ function vistaOps(filas) {
   const el = $("#t-ops");
   $("#nOps").textContent = filas ? filas.length : 0;
   if (!S.programa) { el.innerHTML = `<div class="card empty"><b>📄 Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad).</div>`; return; }
-  if (!filas) { el.innerHTML = `<div class="card empty"><b>${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs</b>Presiona 🔄 Leer biblioteca para cruzarlo contra los dibujos de Drive.</div>`; return; }
+  const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">⚠️ ${esc(t)}</p>`).join("");
+  if (!filas) { el.innerHTML = avP + `<div class="card empty"><b>${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs</b>Presiona 🔄 Leer biblioteca para cruzarlo contra los dibujos de Drive.</div>`; return; }
   const filtro = ls.get("nl_filtro", "todas");
   const vis = filas.filter(f => filtro === "todas" || (filtro === "lamina" ? f.piezas.length : filtro === "problemas" ? ["err", "warn", "info"].includes(f.estado) : !f.piezas.length));
-  let h = `<div class="toolbar"><span class="muted">${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
+  let h = avP + `<div class="toolbar"><span class="muted">${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
     <label class="muted">Ver:</label>
     <select id="selFiltro" style="font:inherit;padding:6px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink)">
       ${[["todas", "Todas las OPs"], ["lamina", "Solo con lámina"], ["problemas", "Con errores o avisos"], ["sin", "Sin dibujos de lámina"]].map(([v, t]) => `<option value="${v}" ${v === filtro ? "selected" : ""}>${t}</option>`).join("")}
@@ -1112,7 +1160,7 @@ function vistaCapas() {
   for (const [id, r] of S.analisis) for (const c of r.capas || []) {
     const k = norm(c.nombre);
     if (!vistas.has(k)) vistas.set(k, { nombre: c.nombre, archivos: 0, corte: 0, marca: 0, ignorada: 0 });
-    const v = vistas.get(k); v.archivos++; v[c.rol] = (v[c.rol] || 0) + 1;
+    const v = vistas.get(k), rol = c.rol === "ignorar" ? "ignorada" : c.rol; v.archivos++; v[rol] = (v[rol] || 0) + 1;
   }
   if (!vistas.size) { card.classList.add("hide"); return; }
   card.classList.remove("hide");
@@ -1404,7 +1452,7 @@ function asignarIds(N) {
       h.id = `${N.id}-C${C.cal}-${pad2(h.n)}`;
       h.archivo = `C${C.cal}_${N.id}_L${pad2(h.n)}de${pad2(C.hojas.length)}${h.retazoId ? "_" + h.retazoId : ""}.dxf`;
       if (h.recuperable) {
-        let id; do { id = `R${C.cal}-${mmdd}-${++seq}`; } while (usados.has(id));
+        let id; do { id = `R${C.cal}-${yy}${mmdd}-${++seq}`; } while (usados.has(id));   // con año: no se repite al año siguiente
         usados.add(id); h.idRetazo = id;
       } else h.idRetazo = null;
     });
@@ -1520,42 +1568,70 @@ function ligarNid(filas) {
 
 /* ============================== SERVIDOR (Sheet + Drive) ============================== */
 const servidorConfigurado = () => !!(ls.get("nl_url", "") || URL_DEFAULT);
-async function cargarEstado() { const d = await jsonp({ accion: "estado" }, 90000); S.estado = d; S.estadoHora = new Date(); return d; }
+async function cargarEstado() { const d = await jsonp({ accion: "estado" }, 90000); ponerEstado(d); return d; }
+/** Estado del servidor con listas siempre presentes (una hoja vacía o un campo dañado no tumba la vista de Corte) */
+function ponerEstado(d) {
+  for (const k of ["programas", "nidos", "retazos"]) if (!Array.isArray(d[k])) d[k] = [];
+  S.estado = d; S.estadoHora = new Date();
+}
 /** POST sin CORS (el Apps Script recibe el cuerpo; la respuesta se confirma luego con "estado") */
 async function postServidor(obj) {
   const url = (ls.get("nl_url", "") || URL_DEFAULT).trim(), tok = ls.get("nl_tok", "");
   await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(tok ? { ...obj, token: tok } : obj) });
 }
 
+/** Registro de un nido tal como lo guarda el servidor */
+function nidoParaServidor(N, C, h) {
+  const ops = {};
+  for (const [oi, o] of h.porOp) ops[N.ops[oi].op] = { ruta: N.ops[oi].ruta, pz: o.piezas, area: +o.area.toFixed(5), hojas: +(h.consumo * o.area / h.area).toFixed(5) };
+  return { id: h.id, programaId: N.id, calibre: C.cal, n: h.n, total: C.hojas.length, piezas: h.pl.length, area: +h.area.toFixed(5), consumo: +h.consumo.toFixed(5),
+    aprov: +h.aprov.toFixed(4), largo: h.L, retazoUsado: h.retazoId || "", creado: N.generado.toISOString(), archivo: h.archivo, ops,
+    retazoNuevo: h.recuperable ? { id: h.idRetazo, ancho: +h.A.toFixed(1), largo: Math.round(h.retazo), fraccion: +(h.retazo / LAMINA.H).toFixed(4), kg: +(h.retazo / LAMINA.H * pesoHoja(C.cal)).toFixed(2) } : null };
+}
+
+/** Publica los nidos que aún no están en el servidor; si se corta a la mitad, volver a publicar completa los que faltan */
 async function publicarNidos(btn) {
   const N = S.nidos; if (!N) return;
-  const total = N.cals.reduce((s, C) => s + C.hojas.length, 0);
-  if (!confirm(`Publicar ${total} nido(s) del programa ${N.programa || ""} para corte.\n\nSe guardan los DXF en Drive y el operador los verá en ✂️ Corte.`)) return;
+  const hojas = N.cals.flatMap(C => C.hojas.map(h => ({ C, h }))), total = hojas.length;
+  const espera = ms => new Promise(r => setTimeout(r, ms));
   btn.disabled = true;
   try {
-    progreso("Revisando inventario de retazos…", 0.02);
+    progreso("Revisando lo publicado y el inventario de retazos…", 0.02);
     await cargarEstado();
-    const disp = new Set(S.estado.retazos.filter(r => r.estado === "disponible").map(r => r.id));
-    const faltan = N.cals.flatMap(C => C.hojas.filter(h => h.retazoId && !disp.has(h.retazoId)).map(h => h.retazoId));
-    if (faltan.length) throw new Error(`Los retazos ${faltan.join(", ")} ya no están disponibles. Vuelve a generar los nidos.`);
-    if (S.estado.nidos.some(n => n.programaId === N.id)) throw new Error(`El programa ${N.id} ya fue publicado.`);
-    const opsTot = N.ops.map(o => ({ ...o }));
-    await postServidor({ accion: "guardarPrograma", programa: { id: N.id, nombre: N.programa, creado: N.generado.toISOString(), ops: opsTot, nidos: total, params: N.params } });
-    let k = 0;
-    for (const C of N.cals) for (const h of C.hojas) {
-      progreso(`Publicando ${h.id} (${++k} de ${total})`, k / total);
-      const ops = {};
-      for (const [oi, o] of h.porOp) ops[N.ops[oi].op] = { ruta: N.ops[oi].ruta, pz: o.piezas, area: +o.area.toFixed(5), hojas: +(h.consumo * o.area / h.area).toFixed(5) };
-      const nido = { id: h.id, programaId: N.id, calibre: C.cal, n: h.n, total: C.hojas.length, piezas: h.pl.length, area: +h.area.toFixed(5), consumo: +h.consumo.toFixed(5),
-        aprov: +h.aprov.toFixed(4), largo: h.L, retazoUsado: h.retazoId || "", creado: N.generado.toISOString(), archivo: h.archivo, ops,
-        retazoNuevo: h.recuperable ? { id: h.idRetazo, ancho: +h.A.toFixed(1), largo: Math.round(h.retazo), fraccion: +(h.retazo / LAMINA.H).toFixed(4), kg: +(h.retazo / LAMINA.H * pesoHoja(C.cal)).toFixed(2) } : null };
-      await postServidor({ accion: "guardarNido", nido, dxf: dxfDeHoja(N, C, h) });
-    }
-    progreso("Confirmando…", 1);
-    let ok = 0;
-    for (let i = 0; i < 6; i++) { await cargarEstado(); ok = S.estado.nidos.filter(n => n.programaId === N.id).length; if (ok >= total) break; await new Promise(r => setTimeout(r, 2000)); }
+    const guardados = () => new Set(S.estado.nidos.filter(n => n.programaId === N.id).map(n => n.id));
+    let ya = guardados();
     progreso(null);
-    if (ok < total) alert(`Se confirmaron ${ok} de ${total} nidos. Revisa la conexión y vuelve a publicar (los ya guardados no se duplican).`);
+    if (ya.size >= total) throw new Error(`El programa ${N.id} ya está publicado completo (${total} nidos).`);
+    const porSubir = hojas.filter(x => !ya.has(x.h.id));
+    const disp = new Set(S.estado.retazos.filter(r => r.estado === "disponible").map(r => r.id));
+    const faltan = porSubir.filter(x => x.h.retazoId && !disp.has(x.h.retazoId)).map(x => x.h.retazoId);
+    if (faltan.length) throw new Error(`Los retazos ${faltan.join(", ")} ya no están disponibles. Vuelve a generar los nidos.`);
+    const existentes = new Set(S.estado.retazos.map(r => r.id));
+    const chocan = porSubir.filter(x => x.h.idRetazo && existentes.has(x.h.idRetazo)).map(x => x.h.idRetazo);
+    if (chocan.length) throw new Error(`Los IDs de retazo ${chocan.join(", ")} ya existen en el inventario. Vuelve a generar los nidos.`);
+    const losQueFaltan = n => n === 1 ? "el nido que falta" : `los ${n} nidos que faltan`;
+    const msg = ya.size
+      ? `El programa ${N.id} quedó publicado a medias: ${ya.size} de ${total} nidos.\n\nSe publica solo ${losQueFaltan(total - ya.size)}.`
+      : `Publicar ${total} nido(s) del programa ${N.programa || ""} para corte.\n\nSe guardan los DXF en Drive y el operador los verá en ✂️ Corte.`;
+    if (!confirm(msg)) { btn.disabled = false; return; }
+    await postServidor({ accion: "guardarPrograma", programa: { id: N.id, nombre: N.programa, creado: N.generado.toISOString(), ops: N.ops.map(o => ({ ...o })), nidos: total, params: N.params } });
+    // hasta 3 pasadas: cada una manda solo lo que el servidor todavía no confirma
+    for (let pasada = 1; pasada <= 3 && ya.size < total; pasada++) {
+      const P = hojas.filter(x => !ya.has(x.h.id));
+      let k = 0;
+      for (const { C, h } of P) {
+        progreso(`${pasada > 1 ? `Reintento ${pasada - 1} · ` : ""}Publicando ${h.id} (${++k} de ${P.length})`, k / P.length);
+        try { await postServidor({ accion: "guardarNido", nido: nidoParaServidor(N, C, h), dxf: dxfDeHoja(N, C, h) }); } catch { /* se reintenta en la siguiente pasada */ }
+      }
+      for (let i = 0; i < 4; i++) {
+        progreso(`Confirmando… (${ya.size} de ${total})`, 1);
+        try { await cargarEstado(); ya = guardados(); } catch { /* se vuelve a preguntar */ }
+        if (ya.size >= total) break;
+        await espera(2500);
+      }
+    }
+    progreso(null);
+    if (ya.size < total) alert(`Se confirmaron ${ya.size} de ${total} nidos. Revisa la conexión y presiona 📤 Publicar otra vez: solo se manda ${losQueFaltan(total - ya.size)}.`);
     else { alert(`✅ Programa ${N.id} publicado: ${total} nidos listos en ✂️ Corte.`); ls.set("nl_progCorte", N.id); }
   } catch (e) { progreso(null); alert("Publicar: " + e.message); }
   btn.disabled = false;
@@ -1565,12 +1641,16 @@ async function publicarNidos(btn) {
 const EST = { "pendiente": ["⏳", "Faltante por cortar", "info"], "en proceso": ["🔥", "En proceso de corte", "warn"], "cortado": ["✅", "Cortado", "ok"] };
 const chipNido = e => { const x = EST[e] || ["", e, "info"]; return `<span class="st ${x[2]}">${x[0]} ${x[1]}</span>`; };
 const fmtHora = s => s ? new Date(s).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-const jsonOps = s => { try { return typeof s === "string" ? JSON.parse(s || "{}") : (s || {}); } catch { return {}; } };
+const jsonOps = s => { try { const v = typeof s === "string" ? JSON.parse(s || "{}") : s; return v && typeof v === "object" ? v : {}; } catch { return {}; } };
+const jsonLista = s => { const v = jsonOps(s); return Array.isArray(v) ? v : []; };
 
 function vistaCorte() {
   const el = $("#corte");
   const E = S.estado;
   if (!E) { el.innerHTML = `<div class="card empty"><b>✂️ Corte</b>${S.cargandoEstado ? "Cargando programas…" : "Presiona 🔄 Actualizar para ver los nidos publicados."}<div style="margin-top:10px"><button id="bEst" class="pri">🔄 Actualizar</button></div></div>`; $("#bEst").onclick = refrescarCorte; return; }
+  // el refresco automático no debe cerrar lo que el operador abrió ni quitarle el cursor
+  const abierto = (k, def) => (S.corteAbiertos.has(k) ? S.corteAbiertos.get(k) : def) ? "open" : "";
+  const ae = document.activeElement, foco = ae && ae.id && el.contains(ae) ? { id: ae.id, a: ae.selectionStart, b: ae.selectionEnd } : null;
   const progs = E.programas.slice().sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
   let pid = ls.get("nl_progCorte", ""); if (!progs.some(p => p.id === pid)) pid = progs[0] ? progs[0].id : "";
   const prog = progs.find(p => p.id === pid);
@@ -1584,7 +1664,7 @@ function vistaCorte() {
       <span style="flex:1"></span><span class="muted">Actualizado ${S.estadoHora ? S.estadoHora.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
       ${prog && nidos.every(n => n.estado === "pendiente") ? `<button id="bElim" title="Solo si ningún nido se ha empezado a cortar">🗑️ Eliminar programa</button>` : ""}
       <button id="bEst">🔄 Actualizar</button></div></div>`;
-  if (!prog) { el.innerHTML = h + `<div class="card empty"><b>Sin programas publicados</b>En 🗂️ Planeación genera los nidos y presiona 📤 Publicar para corte.</div>`; ligarCorte(); return; }
+  if (!prog) { el.innerHTML = h + `<div class="card empty"><b>Sin programas publicados</b>En 🗂️ Planeación genera los nidos y presiona 📤 Publicar para corte.</div>`; ligarCorte(foco); return; }
 
   const tot = nidos.length || 1;
   h += `<div class="kpis">
@@ -1608,7 +1688,7 @@ function vistaCorte() {
   const sig = nidos.find(n => n.estado === "pendiente");
   for (const c of cals) {
     const ns = nidos.filter(n => String(n.calibre) === c), hechos = ns.filter(n => n.estado === "cortado").length;
-    h += `<details class="card" ${ns.some(n => n.estado !== "cortado") ? "open" : ""}><summary>🧩 CAL ${esc(c)} <span class="sub">${hechos} de ${ns.length} cortados</span></summary><div class="body tw"><table><thead><tr><th>Lámina</th><th>Estado</th><th>Nido</th><th class="num">Piezas</th><th>OPs</th><th class="num">Aprov.</th><th>Retazo</th><th>Inicio / fin</th><th></th></tr></thead><tbody>`;
+    h += `<details class="card" data-k="cal-${esc(c)}" ${abierto("cal-" + c, ns.some(n => n.estado !== "cortado"))}><summary>🧩 CAL ${esc(c)} <span class="sub">${hechos} de ${ns.length} cortados</span></summary><div class="body tw"><table><thead><tr><th>Lámina</th><th>Estado</th><th>Nido</th><th class="num">Piezas</th><th>OPs</th><th class="num">Aprov.</th><th>Retazo</th><th>Inicio / fin</th><th></th></tr></thead><tbody>`;
     for (const n of ns) {
       const ops = jsonOps(n.ops);
       h += `<tr${sig && n.id === sig.id && !enProc ? ' style="background:var(--warn-bg)"' : ""}><td><b>${n.n} de ${n.total}</b></td><td>${chipNido(n.estado)}</td><td class="mono">${esc(n.id)}</td><td class="num">${n.piezas}</td>
@@ -1623,7 +1703,7 @@ function vistaCorte() {
 
   // OPs
   const porOP = new Map();
-  for (const op of jsonOps(prog.ops)) porOP.set(op.op, { ...op, pz: 0, cortadas: 0, proceso: 0, hojas: 0, cal: new Set() });
+  for (const op of jsonLista(prog.ops)) if (op && op.op != null) porOP.set(op.op, { ...op, pz: 0, cortadas: 0, proceso: 0, hojas: 0, cal: new Set() });
   for (const n of nidos) for (const [op, o] of Object.entries(jsonOps(n.ops))) {
     const x = porOP.get(op) || { op, ruta: o.ruta, desc: "", cant: 0, pz: 0, cortadas: 0, proceso: 0, hojas: 0, cal: new Set() };
     x.pz += o.pz; x.hojas += o.hojas; x.cal.add(n.calibre); x.kg = (x.kg || 0) + o.hojas * pesoHoja(+n.calibre);
@@ -1632,7 +1712,7 @@ function vistaCorte() {
   }
   const L = [...porOP.values()].filter(x => x.pz);
   const estOP = x => x.cortadas === x.pz ? "cortado" : (x.proceso || x.cortadas) ? "en proceso" : "pendiente";
-  h += `<details class="card" open><summary>📋 OPs del programa <span class="sub">${L.filter(x => estOP(x) === "cortado").length} cortadas · ${L.filter(x => estOP(x) === "en proceso").length} en proceso · ${L.filter(x => estOP(x) === "pendiente").length} faltantes</span></summary>
+  h += `<details class="card" data-k="ops" ${abierto("ops", true)}><summary>📋 OPs del programa <span class="sub">${L.filter(x => estOP(x) === "cortado").length} cortadas · ${L.filter(x => estOP(x) === "en proceso").length} en proceso · ${L.filter(x => estOP(x) === "pendiente").length} faltantes</span></summary>
     <div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Estado</th><th class="num">Piezas láser</th><th class="num">Cortadas</th><th style="width:120px">Avance</th><th>Calibres</th><th class="num">Hojas</th><th class="num">Kg</th><th class="num">Kg / mueble</th></tr></thead><tbody>`;
   for (const x of L.sort((a, b) => ["en proceso", "pendiente", "cortado"].indexOf(estOP(a)) - ["en proceso", "pendiente", "cortado"].indexOf(estOP(b)))) {
     h += `<tr><td class="mono">${esc(x.op)}</td><td class="mono"><b>${esc(x.ruta)}</b></td><td>${esc(x.desc)}</td><td>${chipNido(estOP(x))}</td><td class="num">${fmt(x.pz)}</td><td class="num">${fmt(x.cortadas)}</td>
@@ -1646,7 +1726,7 @@ function vistaCorte() {
   const grupo = e => R.filter(r => r.estado === e);
   const sumF = arr => arr.reduce((s, r) => s + Number(r.fraccion || 0), 0);
   const gen = R.filter(r => r.estado !== "por cortar"), usados = grupo("usado"), desc = grupo("descartado"), disp = grupo("disponible"), asig = grupo("asignado");
-  h += `<details class="card" open><summary>♻️ Inventario de retazos <span class="sub">${disp.length} disponibles · ${fmt(sumF(disp), 2)} hojas equivalentes</span></summary><div class="body">
+  h += `<details class="card" data-k="ret" ${abierto("ret", true)}><summary>♻️ Inventario de retazos <span class="sub">${disp.length} disponibles · ${fmt(sumF(disp), 2)} hojas equivalentes</span></summary><div class="body">
     <div class="kpis" style="margin-top:4px">
       <div class="kpi"><div class="v">${gen.length}</div><div class="l">generados · ${fmt(sumF(gen), 2)} hojas</div></div>
       <div class="kpi ok"><div class="v">${usados.length}</div><div class="l">reutilizados · ${fmt(sumF(usados), 2)} hojas</div></div>
@@ -1663,31 +1743,33 @@ function vistaCorte() {
   }
   h += `</tbody></table></div><p class="note">Un retazo pasa a <b>disponible</b> cuando se corta el nido que lo genera, y los siguientes nidos del mismo calibre lo usan antes que una lámina nueva. Cada retazo lleva su ID grabado.</p></div></details>`;
   el.innerHTML = h;
-  ligarCorte();
+  ligarCorte(foco);
 }
 
-function ligarCorte() {
+function ligarCorte(foco) {
   const q = () => ($("#cQuien") ? $("#cQuien").value.trim() : "");
   const b = $("#bEst"); if (b) b.onclick = refrescarCorte;
   const sp = $("#cProg"); if (sp) sp.onchange = () => { ls.set("nl_progCorte", sp.value); vistaCorte(); };
-  const qi = $("#cQuien"); if (qi) qi.onchange = () => ls.set("nl_quien", qi.value.trim());
+  const qi = $("#cQuien"); if (qi) qi.oninput = () => ls.set("nl_quien", qi.value.trim());   // se guarda al teclear: el refresco no lo borra
+  document.querySelectorAll("#corte details[data-k]>summary").forEach(sm => sm.onclick = () => S.corteAbiertos.set(sm.parentElement.dataset.k, !sm.parentElement.open));
+  if (foco) { const f = document.getElementById(foco.id); if (f) { f.focus(); try { if (foco.a != null) f.setSelectionRange(foco.a, foco.b); } catch { /* select */ } } }
   document.querySelectorAll(".bBaj").forEach(bt => bt.onclick = () => descargarNido(bt.dataset.id, q(), bt));
   document.querySelectorAll(".bRev").forEach(bt => bt.onclick = async () => {
     if (!confirm(`¿Regresar ${bt.dataset.id} a "faltante por cortar"?`)) return;
-    try { const d = await jsonp({ accion: "revertir", id: bt.dataset.id, quien: q() }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+    try { const d = await jsonp({ accion: "revertir", id: bt.dataset.id, quien: q() }); ponerEstado(d.estado); vistaCorte(); } catch (e) { alert(e.message); }
   });
   document.querySelectorAll(".bDesc").forEach(bt => bt.onclick = async () => {
     if (!confirm(`¿Marcar el retazo ${bt.dataset.id} como descartado? Ya no se usará en nidos nuevos.`)) return;
-    try { const d = await jsonp({ accion: "descartarRetazo", id: bt.dataset.id, quien: q() }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+    try { const d = await jsonp({ accion: "descartarRetazo", id: bt.dataset.id, quien: q() }); ponerEstado(d.estado); vistaCorte(); } catch (e) { alert(e.message); }
   });
   const be = $("#bElim"); if (be) be.onclick = async () => {
     const id = $("#cProg").value;
     if (!confirm(`¿Eliminar el programa ${id}? Se borran sus nidos (DXF a la papelera) y se liberan los retazos que tenía asignados.`)) return;
-    try { const d = await jsonp({ accion: "eliminarPrograma", id }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+    try { const d = await jsonp({ accion: "eliminarPrograma", id }); ponerEstado(d.estado); vistaCorte(); } catch (e) { alert(e.message); }
   };
   const bt = $("#bTerm"); if (bt) bt.onclick = async () => {
     if (!confirm("¿Marcar el nido en proceso como cortado?")) return;
-    try { const d = await jsonp({ accion: "terminar", quien: q() }); S.estado = d.estado; S.estadoHora = new Date(); vistaCorte(); } catch (e) { alert(e.message); }
+    try { const d = await jsonp({ accion: "terminar", quien: q() }); ponerEstado(d.estado); vistaCorte(); } catch (e) { alert(e.message); }
   };
 }
 
@@ -1704,7 +1786,7 @@ async function descargarNido(id, quien, btn) {
   try {
     const d = await jsonp({ accion: "descargar", id, quien }, 120000);
     descargarTexto(d.archivo || id + ".dxf", b64ToBytes(d.dxf));
-    S.estado = d.estado; S.estadoHora = new Date();
+    ponerEstado(d.estado);
   } catch (e) { alert("Descarga: " + e.message); }
   vistaCorte();
 }
@@ -1796,6 +1878,7 @@ function cargarExcelJS() {
 function accionSugerida(txt) {
   const t = norm(txt);
   const R = [
+    [/FUERA DE LA PIEZA/, "Borrar los trazos de marca que quedan fuera del contorno (marcos, cotas o textos sueltos) y subir nueva versión"],
     [/ABIERTO/, "Cerrar el contorno: unir los extremos sueltos (las líneas deben tocarse) y subir nueva versión"],
     [/DUPLICAD|ENCIMAD/, "Borrar las líneas encimadas (OVERKILL en AutoCAD) y subir nueva versión"],
     [/EXTERIORES INDEPENDIENTES/, "Dejar una sola pieza por archivo; separar las demás en archivos propios"],
@@ -1971,7 +2054,7 @@ async function exportarExcel(filas, L) {
     const wsN = hoja("Nidos", "Nidos generados · láminas por calibre", colsN, "FF2E86DE");
     let b2 = false;
     for (const Cx of N.cals) { b2 = !b2; for (const hj of Cx.hojas) filaDatos(wsN, { cal: Cx.cal, n: `${hj.n} de ${Cx.hojas.length}`, pz: hj.pl.length, aprov: hj.aprov, cons: hj.consumo, kg: hj.consumo * pesoHoja(Cx.cal),
-      ret: hj.recuperable ? `${Math.round(LAMINA.W)} × ${Math.round(hj.retazo)} mm` : "", ops: [...hj.porOp.entries()].map(([oi, o]) => `${N.ops[oi].op} (${N.ops[oi].ruta}): ${o.piezas} pz`).join(" · ") }, colsN, { banda: b2 }); }
+      ret: hj.recuperable ? `${Math.round(hj.A)} × ${Math.round(hj.retazo)} mm` : "", ops: [...hj.porOp.entries()].map(([oi, o]) => `${N.ops[oi].op} (${N.ops[oi].ruta}): ${o.piezas} pz`).join(" · ") }, colsN, { banda: b2 }); }
     const colsR = [{ k: "op", t: "OP", w: 13, mono: true }, { k: "ruta", t: "Ruta", w: 13, mono: true }, { k: "desc", t: "Descripción", w: 36, wrap: true }, { k: "cal", t: "Calibre", w: 8, centro: true },
       { k: "pz", t: "Piezas", w: 9, num: true }, { k: "area", t: "Área neta m²", w: 12, num: true, fmt: "#,##0.000" }, { k: "hojas", t: "Hojas reales", w: 12, num: true, fmt: "0.000" },
       { k: "kg", t: "Kg reales", w: 11, num: true, fmt: "#,##0.00" }, { k: "kgm", t: "Kg por mueble", w: 12, num: true, fmt: "0.000" }, { k: "lam", t: "Láminas", w: 16 }];
@@ -1983,7 +2066,7 @@ async function exportarExcel(filas, L) {
 
   const buf = await wb.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-  const a = document.createElement("a"); a.href = url; a.download = `Pendientes_Ingenieria_laser_${ahora.toISOString().slice(0, 10)}.xlsx`;
+  const a = document.createElement("a"); a.href = url; a.download = `${fechaLocal(ahora)}-pendientes-ingenieria-laser-cama.xlsx`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 

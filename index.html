@@ -4,126 +4,234 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nidos Láser de Cama</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-:root{
-  --bg:#f4f5f2; --panel:#ffffff; --ink:#1c1f1a; --muted:#6b7166; --line:#dfe2da;
-  --accent:#2f7d32; --accent-ink:#ffffff; --corte:#1f9d3a; --marca:#d4a20a;
-  --ok:#2f7d32; --ok-bg:#e6f2e4; --warn:#9a6a00; --warn-bg:#fbf1d6; --err:#b3261e; --err-bg:#fbe5e2;
-  --info:#55606b; --info-bg:#eceff1; --chip:#eef0ea; --shadow:0 1px 2px rgba(0,0,0,.06);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#141612; --panel:#1d201b; --ink:#e7eae3; --muted:#9aa194; --line:#30352d;
-    --accent:#5dbb63; --accent-ink:#0d1a0e; --corte:#4cd068; --marca:#f2c230;
-    --ok:#7fd086; --ok-bg:#1d3320; --warn:#f0c35a; --warn-bg:#3a2f12; --err:#ff8a80; --err-bg:#3d1c19;
-    --info:#b7c0c8; --info-bg:#262b30; --chip:#272b24; --shadow:none;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#141612; --panel:#1d201b; --ink:#e7eae3; --muted:#9aa194; --line:#30352d;
-  --accent:#5dbb63; --accent-ink:#0d1a0e; --corte:#4cd068; --marca:#f2c230;
-  --ok:#7fd086; --ok-bg:#1d3320; --warn:#f0c35a; --warn-bg:#3a2f12; --err:#ff8a80; --err-bg:#3d1c19;
-  --info:#b7c0c8; --info-bg:#262b30; --chip:#272b24; --shadow:none;
-}
+/* Formato visual de OEE Planta (solo tema oscuro). Los alias de abajo son los nombres que usan las vistas y los SVG de piezas y nidos. */
+:root{--bg:#0f1117;--bg2:#181b24;--bg3:#1e2130;--border:#2a2e3f;--text:#e8eaf0;--text2:#8b8fa8;--text3:#555870;--blue:#4a9eff;--green:#3ecf8e;--amber:#f5a623;--red:#f06060;--radius:8px;--radius-lg:12px;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+  --panel:var(--bg2);--ink:var(--text);--muted:var(--text2);--line:var(--border);--accent:var(--blue);--accent-ink:#fff;--corte:var(--green);--marca:#f2c230;
+  --ok:var(--green);--ok-bg:rgba(62,207,142,.15);--warn:var(--amber);--warn-bg:rgba(245,166,35,.15);--err:var(--red);--err-bg:rgba(240,96,96,.15);
+  --info:var(--blue);--info-bg:rgba(74,158,255,.15);--chip:var(--bg3);--shadow:none}
+html{color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
-header h1 small{display:block;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.4px;text-transform:uppercase}
-.logo{width:30px;height:30px;border-radius:7px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink);font-weight:800}
+body{margin:0;font:13px/1.45 var(--sans);background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+@keyframes rowIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+@keyframes badgePop{0%{transform:scale(1)}50%{transform:scale(1.18)}100%{transform:scale(1)}}
+
+/* ---------- menú lateral ---------- */
+.sidebar{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:width .25s cubic-bezier(.4,0,.2,1),min-width .25s cubic-bezier(.4,0,.2,1)}
+.sidebar.collapsed{width:56px;min-width:56px}
+.sidebar-logo{padding:1.25rem 1.25rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;white-space:nowrap;overflow:hidden;transition:padding .25s}
+.sidebar.collapsed .sidebar-logo{padding:1rem 0;justify-content:center}
+.logo-box{width:34px;height:34px;flex-shrink:0;background:#fff;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:5px;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.logo-box img{width:100%;height:100%;object-fit:contain}
+.logo-text{font-size:15px;font-weight:600;color:var(--text);letter-spacing:.3px}
+.logo-sub{font-size:11px;color:var(--text2);margin-top:2px;font-family:var(--mono)}
+.nav-section{padding:.75rem 0}
+.nav-label{font-size:10px;font-weight:600;color:var(--text3);padding:0 1.25rem .5rem;letter-spacing:1px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 1.25rem;cursor:pointer;font-size:13px;color:var(--text2);border-left:2px solid transparent;transition:all .18s cubic-bezier(.4,0,.2,1);white-space:nowrap;position:relative;user-select:none}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.on{background:var(--bg3);color:var(--text);border-left-color:var(--blue);font-weight:500}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;transition:filter .2s,transform .15s}
+.nav-item:hover svg{transform:scale(1.1)}
+.nav-item.on svg{animation:badgePop .3s ease}
+.nav-item::before{content:'';position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .2s}
+.nav-item:active::before{opacity:.06}
+.nav-item .n{margin-left:auto;font:500 10px var(--mono);background:var(--bg);color:var(--text2);padding:1px 7px;border-radius:9px}
+.nav-item[data-t=ops] svg{color:#4a9eff;filter:drop-shadow(0 0 4px rgba(74,158,255,.5))}
+.nav-item[data-t=exp] svg{color:#3ecf8e;filter:drop-shadow(0 0 4px rgba(62,207,142,.5))}
+.nav-item[data-t=nid] svg{color:#f5a623;filter:drop-shadow(0 0 4px rgba(245,166,35,.5))}
+.nav-item[data-t=con] svg{color:#c084fc;filter:drop-shadow(0 0 4px rgba(192,132,252,.5))}
+.nav-item[data-t=pen] svg{color:#fb7185;filter:drop-shadow(0 0 4px rgba(251,113,133,.5))}
+.nav-item[data-t=bib] svg{color:#38bdf8;filter:drop-shadow(0 0 4px rgba(56,189,248,.5))}
+.nav-item[data-m=corte] svg{color:#3ecf8e;filter:drop-shadow(0 0 4px rgba(62,207,142,.5))}
+.nav-item.on svg{filter:drop-shadow(0 0 8px currentColor)}
+.sidebar.collapsed .logo-txt,.sidebar.collapsed .nav-label,.sidebar.collapsed .nav-item span,.sidebar.collapsed .sb-txt{display:none}
+.sidebar.collapsed .nav-item{padding:10px 0;justify-content:center;border-left:none}
+.sidebar.collapsed .nav-item.on{border-right:2px solid var(--blue)}
+.sidebar.collapsed .nav-item::after{content:attr(data-label);position:absolute;left:58px;background:var(--bg3);color:var(--text);font-size:12px;padding:5px 10px;border-radius:var(--radius);border:1px solid var(--border);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:100}
+.sidebar.collapsed .nav-item:hover::after{opacity:1}
+.sidebar-bottom{margin-top:auto;padding:1rem 1.25rem;border-top:1px solid var(--border)}
+.sidebar.collapsed .sidebar-bottom{padding:.75rem 0;display:flex;justify-content:center}
+.sb-btn{width:100%;font:11px var(--sans);background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:var(--radius);cursor:pointer;padding:5px 0;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+.sb-btn:hover{border-color:var(--blue);color:var(--text)}
+.sb-btn svg{width:14px;height:14px;transition:transform .25s}
+.sidebar.collapsed .sb-btn{width:36px}
+.sidebar.collapsed .sb-btn svg{transform:rotate(180deg)}
+
+/* ---------- página ---------- */
+.main{flex:1;min-width:0;overflow-y:auto;background:var(--bg);display:flex;flex-direction:column}
+.topbar{padding:1.25rem 1.5rem .5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;background:var(--bg)}
+.page-title{font-size:17px;font-weight:600;color:var(--text)}
+.page-sub{font-size:12px;color:var(--text2);margin-top:2px}
+.acciones{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-left:auto}
+.content{padding:1.25rem 1.5rem;flex:1}
+.pie{padding:.9rem 1.5rem;border-top:1px solid var(--border);font:11px var(--mono);color:var(--text3)}
+#estado{font:12px var(--mono);color:var(--text2)}
 .sp{flex:1}
-button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-button:hover,.btn:hover{border-color:var(--muted)}
-button.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
-button:disabled{opacity:.5;cursor:default}
-input[type=text],input[type=password]{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:100%}
-main{max-width:1280px;margin:0 auto;padding:14px 16px 60px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);margin-bottom:12px}
-details.card>summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;align-items:center;gap:8px;font-weight:600}
-details.card>summary::-webkit-details-marker{display:none}
-details.card>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
-details.card[open]>summary::before{transform:rotate(90deg)}
-details.card>summary .sub{font-weight:400;color:var(--muted);font-size:12.5px}
-.body{padding:0 14px 14px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hide{display:none!important}
+body.mcorte .soloPlan{display:none!important}
+
+/* ---------- controles ---------- */
+button,.btn{font:500 13px var(--sans);border:1px solid var(--border);background:var(--bg3);color:var(--text);padding:8px 14px;border-radius:var(--radius);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:all .15s cubic-bezier(.4,0,.2,1)}
+button:hover,.btn:hover{border-color:var(--blue)}
+button.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+button.pri:hover{background:#3a8ef0;transform:translateY(-1px);box-shadow:0 4px 14px rgba(74,158,255,.4)}
+button.pri:active{transform:translateY(0)}
+button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:none}
+td button{padding:5px 10px;font-size:12px}
+input[type=text],input[type=password],input[type=number],select{font:13px var(--sans);padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);color:var(--text);transition:border-color .15s}
+input[type=text],input[type=password]{width:100%}
+input[type=number]{font-family:var(--mono)}
+input:focus,select:focus{outline:none;border-color:var(--blue)}
+select option{background:var(--bg2)}
+label.f{display:block;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 @media (max-width:700px){.grid2{grid-template-columns:1fr}}
-label.f{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
-.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
-.kpi .l{font-size:12px;color:var(--muted)}
-.kpi.ok .v{color:var(--ok)} .kpi.warn .v{color:var(--warn)} .kpi.err .v{color:var(--err)}
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px;overflow-x:auto}
-.tab{border:none;background:none;padding:9px 12px;border-bottom:2px solid transparent;border-radius:0;color:var(--muted)}
-.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
-.tab .n{font-size:11px;background:var(--chip);padding:1px 6px;border-radius:9px;margin-left:2px}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;background:var(--panel);position:sticky;top:0}
-td.num,th.num{text-align:right}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.params{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.params label{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;display:flex;flex-direction:column;gap:5px}
+.params input{width:120px}
+.params select{min-width:120px}
+
+/* ---------- tarjetas y KPIs ---------- */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:1.1rem;animation:scaleIn .2s ease both}
+details.card>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::before{content:"▸";color:var(--text3);transition:transform .15s}
+details.card[open]>summary::before{transform:rotate(90deg)}
+details.card>summary .sub{font-weight:400;color:var(--text2);font-size:12px}
+.body{padding:0 16px 16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:1.25rem}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.1rem;display:flex;flex-direction:column;animation:scaleIn .3s ease both;transition:transform .15s,box-shadow .15s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.kpi .l{order:-1;font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:500}
+.kpi .v{font:600 24px var(--mono)}
+.kpi.ok .v{color:var(--green)} .kpi.warn .v{color:var(--amber)} .kpi.err .v{color:var(--red)}
+.bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;background:var(--blue);width:0;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.empty{padding:2.5rem 16px;text-align:center;color:var(--text3);font-size:13px}
+.empty b{display:block;color:var(--text);font-size:15px;font-weight:600;margin-bottom:4px}
+.note{font-size:12px;color:var(--text2);margin:8px 0 0}
+
+/* ---------- tablas ---------- */
 .tw{overflow-x:auto}
-.st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;white-space:nowrap}
-.st.ok{background:var(--ok-bg);color:var(--ok)} .st.warn{background:var(--warn-bg);color:var(--warn)}
-.st.err{background:var(--err-bg);color:var(--err)} .st.info{background:var(--info-bg);color:var(--info)}
-.mono{font-family:var(--mono);font-size:12.5px}
-.muted{color:var(--muted)}
-tr.op{cursor:pointer} tr.op:hover td{background:var(--chip)}
-tr.det>td{background:var(--bg);padding:10px}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th{text-align:left;padding:9px 12px;color:var(--text3);font-weight:500;font-size:11px;letter-spacing:.4px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg3);position:sticky;top:0}
+td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--bg3)}
+tbody tr{animation:rowIn .25s ease both}
+tbody tr:nth-child(1){animation-delay:.02s} tbody tr:nth-child(2){animation-delay:.04s} tbody tr:nth-child(3){animation-delay:.06s}
+tbody tr:nth-child(4){animation-delay:.08s} tbody tr:nth-child(5){animation-delay:.10s} tbody tr:nth-child(6){animation-delay:.12s}
+td.num,th.num{text-align:right} td.num{font-family:var(--mono)}
+tr.op{cursor:pointer}
+tr.det>td,tr.det:hover>td{background:var(--bg);padding:12px}
+
+/* ---------- etiquetas ---------- */
+.st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap}
+.st.ok{background:var(--ok-bg);color:var(--green)} .st.warn{background:var(--warn-bg);color:var(--amber)}
+.st.err{background:var(--err-bg);color:var(--red)} .st.info{background:var(--info-bg);color:var(--blue)}
+.chip{display:inline-block;white-space:nowrap;background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font:11px var(--mono);margin-right:3px}
+.mono{font-family:var(--mono);font-size:12px}
+.muted{color:var(--text2)}
+
+/* ---------- piezas, nidos y diálogo ---------- */
 .pcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-.pc{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.pc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px;display:flex;flex-direction:column;gap:6px;animation:scaleIn .2s ease both}
 .pc .pv{height:150px;display:grid;place-items:center;background:var(--bg);border-radius:6px;cursor:zoom-in}
 .pc .pv svg{max-width:100%;max-height:140px}
 .pc .t{font-weight:600;font-size:13px;display:flex;justify-content:space-between;gap:6px}
-.pc .m{font-size:12px;color:var(--muted)}
-.iss{margin:0;padding:0;list-style:none;font-size:12.5px}
+.pc .m{font-size:12px;color:var(--text2)}
+.iss{margin:0;padding:0;list-style:none;font-size:12px}
 .iss li{padding:2px 0}
-.iss li.err{color:var(--err)} .iss li.warn{color:var(--warn)}
-.chip{display:inline-block;white-space:nowrap;background:var(--chip);border-radius:5px;padding:1px 6px;font-size:11.5px;margin-right:3px}
-.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
-.bar>i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
-#estado{font-size:12.5px;color:var(--muted)}
-.empty{padding:36px 16px;text-align:center;color:var(--muted)}
-.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
-.leg{display:flex;gap:12px;font-size:12px;color:var(--muted);align-items:center}
+.iss li.err{color:var(--red)} .iss li.warn{color:var(--amber)}
+.leg{display:flex;gap:12px;font-size:12px;color:var(--text2);align-items:center}
 .leg i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
-dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0;max-width:min(980px,96vw);width:96vw}
-dialog::backdrop{background:rgba(0,0,0,.45)}
-dialog .hd{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
-dialog .cv{height:min(70vh,640px);display:grid;place-items:center;background:var(--bg)}
-dialog .cv svg{max-width:96%;max-height:96%}
-dialog .ft{padding:10px 14px;font-size:12.5px}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-.hide{display:none!important}
-.modo{display:flex;gap:2px;background:var(--chip);border-radius:9px;padding:3px}
-.modo button{border:none;background:none;padding:6px 12px;border-radius:7px;color:var(--muted)}
-.modo button.on{background:var(--panel);color:var(--ink);font-weight:650;box-shadow:var(--shadow)}
-body.mcorte .soloPlan{display:none!important}
-.note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
-.params{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
-.params label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
-.params input,.params select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:110px}
-.hoja{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.hoja{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px;margin-bottom:10px}
 .hoja .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .hoja svg{width:100%;height:auto;display:block;background:var(--bg);border-radius:6px}
 .ops{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px}
-.ops span{display:inline-flex;align-items:center;gap:5px;background:var(--chip);border-radius:5px;padding:2px 7px}
+.ops span{display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border-radius:4px;padding:2px 7px}
 .ops i{width:10px;height:10px;border-radius:2px;display:inline-block}
+dialog{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg2);color:var(--text);padding:0;max-width:min(980px,96vw);width:96vw}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog .hd{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border)}
+dialog .cv{height:min(70vh,640px);display:grid;place-items:center;background:var(--bg)}
+dialog .cv svg{max-width:96%;max-height:96%}
+dialog .ft{padding:10px 14px;font-size:12px}
+
+@media (max-width:760px){.topbar{padding:1rem 1rem .5rem}.content{padding:1rem}}
+/* impresión: papel blanco y legible */
+@media print{
+  :root{--bg:#fff;--bg2:#fff;--bg3:#f1f3f5;--border:#cfd3d8;--text:#111;--text2:#444;--text3:#666;--blue:#1f6fd1;--green:#1a7f4b;--amber:#a86a00;--red:#b3261e;--marca:#a88400}
+  html{color-scheme:light}
+  body{display:block;height:auto;overflow:visible}
+  .main{overflow:visible}
+  .sidebar,#cfgCard,#prog,.pie,button,.btn{display:none!important}
+  .topbar{position:static}
+  .card,.kpi,.pc,tbody tr{animation:none!important;box-shadow:none!important}
+}
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">N</div>
-  <h1><small>Línea Italia · Láser de cama</small>Nidos de corte</h1>
-  <nav class="modo"><button data-m="plan">🗂️ Planeación</button><button data-m="corte">✂️ Corte</button></nav>
-  <span class="sp"></span>
-  <span id="estado"></span>
-  <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
-  <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca de Drive y validar los dibujos del programa">🔄 Leer biblioteca</button>
-  <button id="bTema" title="Tema claro/oscuro">🌓</button>
-</header>
-<main id="plan">
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-box"><img src="assets/logo-li.png" alt="LI"></div>
+    <div class="logo-txt"><div class="logo-text">Nidos de corte</div><div class="logo-sub">Láser de cama</div></div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Planeación</div>
+    <div class="nav-item tab" data-t="ops" data-label="Programa">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+      <span>Programa</span><span class="n" id="nOps">0</span>
+    </div>
+    <div class="nav-item tab" data-t="exp" data-label="Explosión por calibre">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span>Explosión por calibre</span>
+    </div>
+    <div class="nav-item tab" data-t="nid" data-label="Nidos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="6" y="6" width="5" height="7" rx="1"/><rect x="13" y="6" width="5" height="4" rx="1"/><rect x="13" y="12" width="5" height="6" rx="1"/><rect x="6" y="15" width="5" height="3" rx="1"/></svg>
+      <span>Nidos</span><span class="n" id="nNid">0</span>
+    </div>
+    <div class="nav-item tab" data-t="con" data-label="Consumo por OP">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      <span>Consumo por OP</span>
+    </div>
+    <div class="nav-item tab" data-t="pen" data-label="Pendientes Ingeniería">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>Pendientes Ingeniería</span><span class="n" id="nPen">0</span>
+    </div>
+    <div class="nav-item tab" data-t="bib" data-label="Biblioteca">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      <span>Biblioteca</span><span class="n" id="nBib">0</span>
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Operación</div>
+    <div class="nav-item" data-m="corte" data-label="Corte">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+      <span>Corte</span>
+    </div>
+  </div>
+  <div class="sidebar-bottom">
+    <button class="sb-btn" id="bMenu" title="Ocultar o mostrar el menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg><span class="sb-txt">Ocultar menú</span></button>
+  </div>
+</nav>
+<div class="main">
+<div class="topbar">
+  <div><div class="page-title" id="pgTitulo">Programa</div><div class="page-sub" id="pgSub"></div></div>
+  <div class="acciones">
+    <span id="estado"></span>
+    <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
+    <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca de Drive y validar los dibujos del programa">🔄 Leer biblioteca</button>
+  </div>
+</div>
+<main id="plan" class="content">
   <details class="card" id="cfgCard">
     <summary>⚙️ Conexión <span class="sub" id="cfgSub">sin configurar</span></summary>
     <div class="body">
@@ -150,15 +258,6 @@ body.mcorte .soloPlan{display:none!important}
 
   <div id="kpis" class="kpis"></div>
 
-  <div class="tabs" id="tabs">
-    <button class="tab on" data-t="ops">📋 Programa <span class="n" id="nOps">0</span></button>
-    <button class="tab" data-t="exp">⚖️ Explosión por calibre</button>
-    <button class="tab" data-t="nid">🧩 Nidos <span class="n" id="nNid">0</span></button>
-    <button class="tab" data-t="con">📦 Consumo por OP</button>
-    <button class="tab" data-t="pen">🛠️ Pendientes Ingeniería <span class="n" id="nPen">0</span></button>
-    <button class="tab" data-t="bib">📚 Biblioteca <span class="n" id="nBib">0</span></button>
-  </div>
-
   <section id="t-ops"></section>
   <section id="t-exp" class="hide"></section>
   <section id="t-nid" class="hide"></section>
@@ -166,7 +265,9 @@ body.mcorte .soloPlan{display:none!important}
   <section id="t-pen" class="hide"></section>
   <section id="t-bib" class="hide"></section>
 </main>
-<main id="corte" class="hide"></main>
+<main id="corte" class="content hide"></main>
+<footer class="pie">Línea Italia · Ingeniería de Procesos</footer>
+</div>
 
 <script id="motorSrc" type="text/plain">
 /* ===== MOTOR DE NIDOS (forma real, rasterizado conservador) =====
@@ -2133,32 +2234,47 @@ $("#fLocal").onchange = async e => {
   e.target.value = ""; estado(`Modo local: ${files.length} archivos`); render();
 };
 
-document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
-  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  for (const s of ["ops", "exp", "nid", "con", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== t.dataset.t);
-  ls.set("nl_tab", t.dataset.t);
-});
-$("#bTema").onclick = () => {
-  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  const nuevo = cur === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = nuevo; ls.set("nl_tema", nuevo);
+/* ---------- menú lateral: secciones de Planeación y vista de Corte ---------- */
+const SECCIONES = {
+  ops: ["Programa", "Órdenes planificadas cruzadas contra la biblioteca de Ingeniería"],
+  exp: ["Explosión por calibre", "Material teórico de lámina por calibre"],
+  nid: ["Nidos", "Acomodo de piezas por lámina y calibre, listo para CypCut"],
+  con: ["Consumo por OP", "Consumo neto de lámina por OP y calibre"],
+  pen: ["Pendientes de Ingeniería", "Dibujos con errores o avisos de la biblioteca"],
+  bib: ["Biblioteca", "Dibujos DXF de lámina en Drive"],
+  corte: ["Corte", "Nidos por cortar, en proceso y cortados · inventario de retazos"]
 };
+function ponerTitulo(k) { const [t, s] = SECCIONES[k] || ["", ""]; $("#pgTitulo").textContent = t; $("#pgSub").textContent = s; }
+function abrirTab(id) {
+  if (!SECCIONES[id] || id === "corte") id = "ops";
+  const enPlan = !document.body.classList.contains("mcorte");
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", enPlan && x.dataset.t === id));
+  for (const s of ["ops", "exp", "nid", "con", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== id);
+  ls.set("nl_tab", id);
+  if (enPlan) ponerTitulo(id);
+}
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => { ponerModo("plan"); abrirTab(t.dataset.t); });
+$("#bMenu").onclick = () => { const c = $("#sidebar").classList.toggle("collapsed"); ls.set("nl_menu", c ? "1" : "0"); };
 $("#dlgX").onclick = () => $("#dlg").close();
 $("#dlg").onclick = e => { if (e.target.id === "dlg") $("#dlg").close(); };
 
 function ponerModo(m) {
-  document.querySelectorAll(".modo button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   $("#plan").classList.toggle("hide", m !== "plan"); $("#corte").classList.toggle("hide", m !== "corte");
   document.body.classList.toggle("mcorte", m === "corte");
+  document.querySelectorAll(".nav-item[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  const tab = ls.get("nl_tab", "ops");
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", m === "plan" && x.dataset.t === tab));
+  ponerTitulo(m === "corte" ? "corte" : tab);
   ls.set("nl_modo", m); if (location.hash !== "#" + m) history.replaceState(null, "", "#" + m);
   if (m === "corte") { vistaCorte(); if (!S.estado && !S.cargandoEstado) refrescarCorte(); }
 }
-document.querySelectorAll(".modo button").forEach(b => b.onclick = () => ponerModo(b.dataset.m));
+document.querySelectorAll(".nav-item[data-m]").forEach(b => b.onclick = () => ponerModo(b.dataset.m));
 setInterval(() => { if (document.body.classList.contains("mcorte") && !document.hidden && !S.cargandoEstado) cargarEstado().then(vistaCorte).catch(() => {}); }, 60000);
 
 (function init() {
-  const t = ls.get("nl_tema", ""); if (t) document.documentElement.dataset.theme = t;
   syncCfg();
-  const tab = ls.get("nl_tab", "ops"); const bt = document.querySelector(`.tab[data-t="${tab}"]`); if (bt) bt.click();
+  if (ls.get("nl_menu", innerWidth < 760 ? "1" : "0") === "1") $("#sidebar").classList.add("collapsed");
+  abrirTab(ls.get("nl_tab", "ops"));
   ponerModo(location.hash === "#corte" ? "corte" : location.hash === "#plan" ? "plan" : ls.get("nl_modo", "plan"));
   render();
 })();

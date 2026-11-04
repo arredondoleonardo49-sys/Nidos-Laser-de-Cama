@@ -988,7 +988,7 @@ async function cargarListado(refrescar) {
   let d; try { d = await jsonp({ accion: "listar", refrescar: refrescar ? "1" : "0" }, 360000); } finally { clearInterval(reloj); }
   const rutas = new Map();
   for (const r of d.rutas) rutas.set(norm(r.ruta), { ruta: r.ruta, tieneLamina: !!r.tieneLamina, archivos: r.archivos || [] });
-  S.biblio = { origen: "drive", raiz: d.raiz, generado: d.generado, desdeCache: !!d.desdeCache, rutas };
+  S.biblio = { origen: "drive", raiz: d.raiz, generado: d.generado, desdeCache: !!d.desdeCache, estructura: d.estructura || "por modelo", rutas };
   for (const r of rutas.values()) r.clas = clasificarRuta(r);
 }
 
@@ -1056,7 +1056,7 @@ function evaluarPrograma() {
   for (const op of S.programa.ops) {
     const r = S.biblio.rutas.get(norm(op.ruta));
     const f = { op, r, piezas: [], sev: "info", etiqueta: "" };
-    if (!r) { f.estado = "sincarpeta"; f.etiqueta = "Sin carpeta"; }
+    if (!r) { f.estado = "sincarpeta"; f.etiqueta = S.biblio.estructura === "plana" ? "Sin dibujos" : "Sin carpeta"; }
     else if (!r.clas.vig.length) { f.estado = "sinlamina"; f.etiqueta = r.tieneLamina ? "Carpeta de lámina vacía" : "Sin dibujos de lámina"; }
     else {
       f.piezas = r.clas.vig.map(m => ({ meta: m, res: resultadoPieza(m), total: m.n.pz * op.cant }));
@@ -1149,7 +1149,7 @@ function vistaOps(filas) {
       <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td></tr>`;
     if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="8"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
   });
-  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. 📂 Sin carpeta / ⚪ sin dibujos: la ruta no lleva lámina o Ingeniería aún no la sube.</p>`;
+  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. 📂 Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca.</p>`;
   el.innerHTML = h;
   $("#selFiltro").onchange = e => { ls.set("nl_filtro", e.target.value); render(); };
   el.querySelectorAll("tr.op").forEach(tr => tr.onclick = () => { const d = el.querySelector(`tr[data-d="${tr.dataset.i}"]`); if (d) d.classList.toggle("hide"); });
@@ -1205,7 +1205,7 @@ function listaPendientes(filas) {
     const ya = new Set();
     for (const f of filas) if ((f.estado === "sincarpeta" || f.estado === "sinlamina") && !ya.has(norm(f.op.ruta))) {
       ya.add(norm(f.op.ruta));
-      L.push({ sev: "info", ruta: f.op.ruta, archivo: "", txt: (f.estado === "sincarpeta" ? "La ruta no tiene carpeta en la biblioteca" : "La carpeta no tiene dibujos de lámina") + " — confirmar si lleva piezas de láser", prog: true, desc: f.op.desc });
+      L.push({ sev: "info", ruta: f.op.ruta, archivo: "", txt: (f.estado !== "sincarpeta" ? "La carpeta no tiene dibujos de lámina" : b.estructura === "plana" ? "La biblioteca no tiene DXF de esta ruta" : "La ruta no tiene carpeta en la biblioteca") + " — confirmar si lleva piezas de láser", prog: true, desc: f.op.desc });
     }
   }
   const ord = { err: 0, warn: 1, info: 2 };
@@ -1927,7 +1927,7 @@ function vistaBib() {
   const rutas = [...b.rutas.values()].filter(r => r.clas.vig.length || r.clas.prob.length).sort((a, b) => a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
   $("#nBib").textContent = rutas.length;
   const tot = rutas.reduce((s, r) => s + r.clas.vig.length, 0), val = rutas.reduce((s, r) => s + r.clas.vig.filter(m => S.analisis.has(m.id)).length, 0);
-  let h = `<div class="toolbar"><span class="muted">${b.origen === "drive" ? `Drive · ${esc(b.raiz)} · leído ${new Date(b.generado).toLocaleString("es-MX")}${b.desdeCache ? " (caché del servidor)" : ""}` : "Modo local"}</span>
+  let h = `<div class="toolbar"><span class="muted">${b.origen === "drive" ? `Drive · ${esc(b.raiz)}${b.estructura && b.estructura !== "por modelo" ? ` (biblioteca ${esc(b.estructura)})` : ""} · leído ${new Date(b.generado).toLocaleString("es-MX")}${b.desdeCache ? " (caché del servidor)" : ""}` : "Modo local"}</span>
     <span style="flex:1"></span><span class="muted">${val} de ${tot} dibujos revisados</span>
     <button id="bValTodo" ${val === tot ? "disabled" : ""}>🔍 Validar toda la biblioteca</button></div>`;
   for (const r of rutas) {

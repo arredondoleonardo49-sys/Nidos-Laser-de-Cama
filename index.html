@@ -46,9 +46,9 @@ body{margin:0;font:13px/1.45 var(--sans);background:var(--bg);color:var(--text);
 .nav-item[data-t=exp] svg{color:#3ecf8e;filter:drop-shadow(0 0 4px rgba(62,207,142,.5))}
 .nav-item[data-t=nid] svg{color:#f5a623;filter:drop-shadow(0 0 4px rgba(245,166,35,.5))}
 .nav-item[data-t=con] svg{color:#c084fc;filter:drop-shadow(0 0 4px rgba(192,132,252,.5))}
-.nav-item[data-t=pen] svg{color:#fb7185;filter:drop-shadow(0 0 4px rgba(251,113,133,.5))}
 .nav-item[data-t=bib] svg{color:#38bdf8;filter:drop-shadow(0 0 4px rgba(56,189,248,.5))}
-.nav-item[data-m=corte] svg{color:#3ecf8e;filter:drop-shadow(0 0 4px rgba(62,207,142,.5))}
+.nav-item[data-m=corte] svg{color:#fb7185;filter:drop-shadow(0 0 4px rgba(251,113,133,.5))}
+.nav-item[data-m=retazos] svg{color:#3ecf8e;filter:drop-shadow(0 0 4px rgba(62,207,142,.5))}
 .nav-item.on svg{filter:drop-shadow(0 0 8px currentColor)}
 .sidebar.collapsed .logo-txt,.sidebar.collapsed .nav-label,.sidebar.collapsed .nav-item span,.sidebar.collapsed .sb-txt{display:none}
 .sidebar.collapsed .nav-item{padding:10px 0;justify-content:center;border-left:none}
@@ -76,14 +76,20 @@ body{margin:0;font:13px/1.45 var(--sans);background:var(--bg);color:var(--text);
 .hide{display:none!important}
 body.mcorte .soloPlan{display:none!important}
 
-/* ---------- controles ---------- */
-button,.btn{font:500 13px var(--sans);border:1px solid var(--border);background:var(--bg3);color:var(--text);padding:8px 14px;border-radius:var(--radius);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:all .15s cubic-bezier(.4,0,.2,1)}
-button:hover,.btn:hover{border-color:var(--blue)}
-button.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
-button.pri:hover{background:#3a8ef0;transform:translateY(-1px);box-shadow:0 4px 14px rgba(74,158,255,.4)}
+/* ---------- controles (botones como los de la OEE: secundarios grises de 12 px, principal azul) ---------- */
+button,.btn{font:500 12px var(--sans);border:1px solid var(--border);background:var(--bg3);color:var(--text2);padding:7px 14px;border-radius:var(--radius);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:all .15s cubic-bezier(.4,0,.2,1)}
+button:hover,.btn:hover{border-color:var(--blue);color:var(--text)}
+button.pri,.btn.pri{background:var(--blue);color:#fff;border-color:var(--blue);font-size:13px;padding:8px 16px}
+button.pri:hover,.btn.pri:hover{background:#3a8ef0;transform:translateY(-1px);box-shadow:0 4px 14px rgba(74,158,255,.4)}
 button.pri:active{transform:translateY(0)}
+button.peligro{background:rgba(240,96,96,.1);border-color:rgba(240,96,96,.3);color:var(--red)}
+button.peligro:hover{background:rgba(240,96,96,.18);border-color:var(--red)}
 button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:none}
-td button{padding:5px 10px;font-size:12px}
+td button{padding:4px 10px;font-size:11px}
+td button.pri{padding:5px 12px;font-size:12px}
+svg.ic{flex-shrink:0;vertical-align:-2px}
+button svg.ic,.btn svg.ic{width:14px;height:14px}
+td button svg.ic{width:12px;height:12px}
 input[type=text],input[type=password],input[type=number],select{font:13px var(--sans);padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);color:var(--text);transition:border-color .15s}
 input[type=text],input[type=password]{width:100%}
 input[type=number]{font-family:var(--mono)}
@@ -100,23 +106,38 @@ label.f{display:block;font-size:10px;font-weight:600;color:var(--text3);letter-s
 
 /* ---------- tarjetas y KPIs ---------- */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:1.1rem;animation:scaleIn .2s ease both}
-details.card>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+details.card>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--text)}
 details.card>summary::-webkit-details-marker{display:none}
-details.card>summary::before{content:"▸";color:var(--text3);transition:transform .15s}
+details.card>summary::before{content:"›";color:var(--text3);font-size:16px;line-height:1;width:10px;transition:transform .15s}
 details.card[open]>summary::before{transform:rotate(90deg)}
+details.card>summary svg.ic{color:var(--text2)}
 details.card>summary .sub{font-weight:400;color:var(--text2);font-size:12px}
+.card-t{font-size:12px;font-weight:600;color:var(--text2);letter-spacing:.4px;text-transform:uppercase;margin:0 0 10px;display:flex;align-items:center;gap:6px}
 .body{padding:0 16px 16px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:1.25rem}
-.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.1rem;display:flex;flex-direction:column;animation:scaleIn .3s ease both;transition:transform .15s,box-shadow .15s}
+/* KPIs como las metric-card de la OEE: ícono en caja, etiqueta arriba y valor en mono */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:1.25rem}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.1rem;display:flex;align-items:center;gap:12px;animation:scaleIn .3s ease both;transition:transform .15s,box-shadow .15s}
 .kpi:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.3)}
-.kpi .l{order:-1;font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:500}
-.kpi .v{font:600 24px var(--mono)}
+.kpi .ki{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--bg3);color:var(--text3)}
+.kpi .ki svg{width:18px;height:18px}
+.kpi .kt{min-width:0;flex:1}
+.kpi .l{font-size:11px;color:var(--text2);margin-bottom:4px;font-weight:500}
+.kpi .v{font:600 24px var(--mono);line-height:1.15}
+.kpi .ks{font-size:10px;color:var(--text3);margin-top:3px}
 .kpi.ok .v{color:var(--green)} .kpi.warn .v{color:var(--amber)} .kpi.err .v{color:var(--red)}
+.kpi.ok .ki{background:rgba(62,207,142,.12);color:var(--green)} .kpi.warn .ki{background:rgba(245,166,35,.12);color:var(--amber)}
+.kpi.err .ki{background:rgba(240,96,96,.12);color:var(--red)} .kpi.info .ki{background:rgba(74,158,255,.12);color:var(--blue)}
 .bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px}
 .bar>i{display:block;height:100%;background:var(--blue);width:0;transition:width .6s cubic-bezier(.4,0,.2,1)}
 .empty{padding:2.5rem 16px;text-align:center;color:var(--text3);font-size:13px}
-.empty b{display:block;color:var(--text);font-size:15px;font-weight:600;margin-bottom:4px}
+.empty .ei{width:36px;height:36px;border-radius:10px;background:rgba(74,158,255,.12);color:var(--blue);display:flex;align-items:center;justify-content:center;margin:0 auto .6rem}
+.empty b{display:block;color:var(--text);font-size:14px;font-weight:600;margin-bottom:4px}
+label.subir{display:block;border:1.5px dashed var(--border);background:var(--bg3);cursor:pointer;transition:border-color .15s,background .15s}
+label.subir:hover{border-color:var(--blue);background:var(--bg2)}
 .note{font-size:12px;color:var(--text2);margin:8px 0 0}
+.card.activo{position:relative;overflow:hidden;border-color:rgba(245,166,35,.45)}
+.card.activo::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--amber)}
+.cal-big{font:700 26px var(--mono);line-height:1}
 
 /* ---------- tablas ---------- */
 .tw{overflow-x:auto}
@@ -129,6 +150,7 @@ tbody tr{animation:rowIn .25s ease both}
 tbody tr:nth-child(1){animation-delay:.02s} tbody tr:nth-child(2){animation-delay:.04s} tbody tr:nth-child(3){animation-delay:.06s}
 tbody tr:nth-child(4){animation-delay:.08s} tbody tr:nth-child(5){animation-delay:.10s} tbody tr:nth-child(6){animation-delay:.12s}
 td.num,th.num{text-align:right} td.num{font-family:var(--mono)}
+table.nw td.mono,table.nw td.num{white-space:nowrap}
 tr.op{cursor:pointer}
 tr.det>td,tr.det:hover>td{background:var(--bg);padding:12px}
 
@@ -136,6 +158,9 @@ tr.det>td,tr.det:hover>td{background:var(--bg);padding:12px}
 .st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap}
 .st.ok{background:var(--ok-bg);color:var(--green)} .st.warn{background:var(--warn-bg);color:var(--amber)}
 .st.err{background:var(--err-bg);color:var(--red)} .st.info{background:var(--info-bg);color:var(--blue)}
+.st.gris{background:var(--bg3);color:var(--text2)}
+.st svg.ic{width:12px;height:12px;vertical-align:0}
+.iss svg.ic{width:12px;height:12px;margin-right:4px}
 .chip{display:inline-block;white-space:nowrap;background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font:11px var(--mono);margin-right:3px}
 .mono{font-family:var(--mono);font-size:12px}
 .muted{color:var(--text2)}
@@ -202,10 +227,6 @@ dialog .ft{padding:10px 14px;font-size:12px}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
       <span>Consumo por OP</span>
     </div>
-    <div class="nav-item tab" data-t="pen" data-label="Pendientes Ingeniería">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span>Pendientes Ingeniería</span><span class="n" id="nPen">0</span>
-    </div>
     <div class="nav-item tab" data-t="bib" data-label="Biblioteca">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
       <span>Biblioteca</span><span class="n" id="nBib">0</span>
@@ -217,6 +238,10 @@ dialog .ft{padding:10px 14px;font-size:12px}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
       <span>Corte</span>
     </div>
+    <div class="nav-item" data-m="retazos" data-label="Inventario de retazos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="1.5"/><line x1="14" y1="6" x2="14" y2="18" stroke-dasharray="2 2"/><line x1="17" y1="10" x2="19" y2="10"/><line x1="17" y1="14" x2="19" y2="14"/></svg>
+      <span>Inventario de retazos</span><span class="n" id="nRet">–</span>
+    </div>
   </div>
   <div class="sidebar-bottom">
     <button class="sb-btn" id="bMenu" title="Ocultar o mostrar el menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg><span class="sb-txt">Ocultar menú</span></button>
@@ -227,18 +252,18 @@ dialog .ft{padding:10px 14px;font-size:12px}
   <div><div class="page-title" id="pgTitulo">Programa</div><div class="page-sub" id="pgSub"></div></div>
   <div class="acciones">
     <span id="estado"></span>
-    <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
-    <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca (carpeta de tu equipo o Drive, según ⚙️ Conexión) y validar los dibujos del programa">🔄 Leer biblioteca</button>
+    <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Cargar programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
+    <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca (carpeta de tu equipo o Drive, según Conexión) y validar los dibujos del programa"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Leer biblioteca</button>
   </div>
 </div>
 <main id="plan" class="content">
   <details class="card" id="cfgCard">
-    <summary>⚙️ Conexión <span class="sub" id="cfgSub">sin configurar</span></summary>
+    <summary><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Conexión <span class="sub" id="cfgSub">sin configurar</span></summary>
     <div class="body">
-      <label class="f">Biblioteca de DXF (de dónde lee 🔄 Leer biblioteca)</label>
+      <label class="f">Biblioteca de DXF (de dónde lee Leer biblioteca)</label>
       <div class="toolbar">
         <select id="selFuente"><option value="carpeta">Carpeta de mi equipo</option><option value="drive">Drive (Apps Script)</option></select>
-        <button id="bCarpeta" title="Elegir la carpeta de la biblioteca en este equipo">📁 Elegir carpeta</button>
+        <button id="bCarpeta" title="Elegir la carpeta de la biblioteca en este equipo"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>Elegir carpeta</button>
         <input id="fCarpeta" type="file" webkitdirectory multiple hidden>
         <span class="muted" id="carpetaRes"></span>
       </div>
@@ -247,17 +272,17 @@ dialog .ft{padding:10px 14px;font-size:12px}
         <div><label class="f">Token (solo si lo configuraste en el script)</label><input id="iTok" type="password" placeholder="opcional"></div>
       </div>
       <div class="toolbar" style="margin-top:10px;margin-bottom:0">
-        <button id="bPing">🔌 Probar conexión</button>
-        <label class="btn" title="Probar sin Drive: selecciona archivos .dxf o .dxf.gz de tu equipo">📁 Modo local (archivos)<input id="fLocal" type="file" accept=".dxf,.gz" multiple hidden></label>
-        <button id="bCache" title="Borrar los dibujos guardados en este navegador">🧹 Limpiar caché</button>
+        <button id="bPing"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>Probar conexión</button>
+        <label class="btn" title="Probar sin Drive: selecciona archivos .dxf o .dxf.gz de tu equipo"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="14 3 14 9 20 9"/></svg>Modo local (archivos)<input id="fLocal" type="file" accept=".dxf,.gz" multiple hidden></label>
+        <button id="bCache" title="Borrar los dibujos guardados en este navegador"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>Limpiar caché</button>
         <span class="muted" id="pingRes"></span>
       </div>
-      <p class="note">Carpeta de mi equipo: se lee cada carpeta de modelo con sus DXF (también los DXF sueltos y las subcarpetas "DXF de lámina"); la carpeta se elige una vez y después solo se da permiso (Chrome o Edge). Drive: los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando cambian. Los nidos publicados y ✂️ Corte siempre van por el Apps Script.</p>
+      <p class="note">Carpeta de mi equipo: se lee cada carpeta de modelo con sus DXF (también los DXF sueltos y las subcarpetas "DXF de lámina"); la carpeta se elige una vez y después solo se da permiso (Chrome o Edge). Drive: los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando cambian. Los nidos publicados, Corte y el inventario de retazos siempre van por el Apps Script.</p>
     </div>
   </details>
 
   <details class="card hide" id="capCard">
-    <summary>🗂️ Capas detectadas <span class="sub" id="capSub"></span></summary>
+    <summary><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>Capas detectadas <span class="sub" id="capSub"></span></summary>
     <div class="body" id="capBody"></div>
   </details>
 
@@ -269,10 +294,10 @@ dialog .ft{padding:10px 14px;font-size:12px}
   <section id="t-exp" class="hide"></section>
   <section id="t-nid" class="hide"></section>
   <section id="t-con" class="hide"></section>
-  <section id="t-pen" class="hide"></section>
   <section id="t-bib" class="hide"></section>
 </main>
 <main id="corte" class="content hide"></main>
+<main id="retazos" class="content hide"></main>
 <footer class="pie">Línea Italia · Ingeniería de Procesos</footer>
 </div>
 
@@ -500,6 +525,47 @@ const URL_DEFAULT = "https://script.google.com/macros/s/AKfycbyM9Stpc1fB97aRf0o5
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const fmt = (n, d = 0) => Number(n).toLocaleString("es-MX", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/* Íconos de línea (mismo estilo que la OEE) en lugar de emojis */
+const IC = {
+  subir: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  bajar: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  recargar: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>',
+  carpeta: '<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>',
+  archivo: '<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="14 3 14 9 20 9"/>',
+  excel: '<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="12" y1="13" x2="12" y2="17"/>',
+  lista: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>',
+  barras: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+  nido: '<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="6" y="6" width="5" height="7" rx="1"/><rect x="13" y="6" width="5" height="4" rx="1"/><rect x="13" y="12" width="5" height="6" rx="1"/>',
+  caja: '<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+  libro: '<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>',
+  tijeras: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+  retazo: '<rect x="2" y="6" width="20" height="12" rx="1.5"/><line x1="14" y1="6" x2="14" y2="18" stroke-dasharray="2 2"/>',
+  ok: '<polyline points="20 6 9 17 4 12"/>',
+  okc: '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  aviso: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  error: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
+  reloj: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  flama: '<path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.07-2.14 0-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 002.5 2.5z"/>',
+  circulo: '<circle cx="12" cy="12" r="9"/>',
+  reusar: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>',
+  mas: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  basura: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
+  deshacer: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  pesa: '<circle cx="12" cy="5" r="3"/><path d="M6.5 8h11l2.5 13H4z"/>',
+  hojas: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  rack: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>',
+  porciento: '<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  archivar: '<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>',
+  prohibido: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>'
+};
+const ico = (k, s = 14) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC[k] || ""}</svg>`;
+/** Tarjeta KPI con ícono, como las de la OEE */
+const kpi = (v, l, icono, tono = "", extra = "") => `<div class="kpi ${tono}"><div class="ki">${ico(icono, 18)}</div><div class="kt"><div class="l">${l}</div><div class="v">${v}</div>${extra}</div></div>`;
+const subK = t => `<div class="ks">${t}</div>`;
+/** Estado vacío con ícono */
+const vacio = (icono, titulo, txt, extra = "") => `<div class="card empty"><div class="ei">${ico(icono, 18)}</div><b>${titulo}</b>${txt}${extra ? `<div style="margin-top:12px">${extra}</div>` : ""}</div>`;
 const fechaLocal = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");   // AAAA-MM-DD en hora de planta
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
 const ls = {
@@ -520,7 +586,7 @@ const S = {
   analisis: new Map(),   // fileId → resultado
   local: new Map(),      // fileId → bytes (modo local)
   metas: new Map(),      // fileId → meta de los archivos revisados
-  corteAbiertos: new Map(), // secciones de ✂️ Corte que el operador abrió o cerró
+  corteAbiertos: new Map(), // secciones de Corte que el operador abrió o cerró
 };
 
 /* ============================== CACHÉ (IndexedDB) ============================== */
@@ -551,7 +617,7 @@ const idb = (() => {
 let jsonpN = 0;
 function jsonp(params, timeoutMs = 180000) {
   const url = (ls.get("nl_url", "") || URL_DEFAULT).trim();
-  if (!url) return Promise.reject(new Error("Configura la URL del Apps Script en ⚙️ Conexión"));
+  if (!url) return Promise.reject(new Error("Configura la URL del Apps Script en Conexión"));
   const tok = ls.get("nl_tok", "");
   return new Promise((res, rej) => {
     const cb = "__nl" + (++jsonpN) + "_" + Date.now();
@@ -843,7 +909,7 @@ function analizar(dxf) {
     pl.ent = e; porCapa.get(e.capa).push(pl);
   }
   if (dup) add(avisos, `${dup} entidad(es) duplicada(s) (encimadas); se marcarían/cortarían dos veces`);
-  // rol: lo que definas en ⚙️ Capas > nombre CORTE/MARCA > automático (la capa con el contorno cerrado más grande es corte)
+  // rol: lo que definas en Capas detectadas > nombre CORTE/MARCA > automático (la capa con el contorno cerrado más grande es corte)
   const roles = rolesUsuario();
   const capas = [...porCapa.entries()].map(([nombre, ents]) => {
     const u = roles[norm(nombre)];
@@ -1013,7 +1079,7 @@ async function pedirCarpeta(otra) {
     let p = await h.queryPermission({ mode: "read" });
     if (p !== "granted") p = await h.requestPermission({ mode: "read" });
     if (p === "granted") return h;
-    throw new Error(`No se dio permiso para leer la carpeta "${h.name}". Vuelve a presionar 🔄 Leer biblioteca y acepta, o elige otra en ⚙️ Conexión → 📁 Elegir carpeta.`);
+    throw new Error(`No se dio permiso para leer la carpeta "${h.name}". Vuelve a presionar Leer biblioteca y acepta, o elige otra en Conexión → Elegir carpeta.`);
   }
   h = await showDirectoryPicker({ id: "nidos-biblioteca", mode: "read" });
   await idb.put(CLAVE_CARPETA, h);
@@ -1147,8 +1213,10 @@ function evaluarPrograma() {
 }
 
 /* ============================== VISTAS ============================== */
-const ICON = { ok: "✅", warn: "⚠️", err: "❌", info: "⏳", sincarpeta: "📂", sinlamina: "⚪" };
-const chipEstado = (sev, txt) => `<span class="st ${sev === "sincarpeta" || sev === "sinlamina" ? "info" : sev}">${ICON[sev] || ""} ${esc(txt)}</span>`;
+const ICON_SEV = { ok: "okc", warn: "aviso", err: "error", info: "reloj", sincarpeta: "carpeta", sinlamina: "circulo" };
+const TONO_SEV = { ok: "ok", warn: "warn", err: "err", info: "info", sincarpeta: "gris", sinlamina: "gris" };
+const icoSev = sev => `<span style="color:var(--${{ ok: "green", warn: "amber", err: "red" }[sev] || "text2"})">${ico(ICON_SEV[sev] || "circulo")}</span>`;
+const chipEstado = (sev, txt) => `<span class="st ${TONO_SEV[sev] || "info"}">${ico(ICON_SEV[sev] || "circulo")}${esc(txt)}</span>`;
 
 function svgPieza(res, grande) {
   const d = res && res.dibujo;
@@ -1170,7 +1238,7 @@ function svgPieza(res, grande) {
 }
 
 function tarjetaPieza(meta, res, total) {
-  const iss = res.errores.map(t => `<li class="err">❌ ${esc(t)}</li>`).concat(res.avisos.map(t => `<li class="warn">⚠️ ${esc(t)}</li>`)).join("");
+  const iss = res.errores.map(t => `<li class="err">${ico("error")}${esc(t)}</li>`).concat(res.avisos.map(t => `<li class="warn">${ico("aviso")}${esc(t)}</li>`)).join("");
   const dims = res.bbox ? `${fmt(res.ancho, 1)} × ${fmt(res.alto, 1)} mm` : "—";
   return `<div class="pc">
     <div class="t"><span>${esc(meta.n.pieza)}</span>${chipEstado(res.sev, { ok: "OK", warn: "Aviso", err: "Error", info: "Pendiente" }[res.sev])}</div>
@@ -1187,34 +1255,33 @@ function vistaKPIs(filas) {
   const k = $("#kpis");
   if (!filas) {
     const b = S.biblio;
-    k.innerHTML = b ? `<div class="kpi"><div class="v">${b.rutas.size}</div><div class="l">rutas en biblioteca</div></div>
-      <div class="kpi"><div class="v">${[...b.rutas.values()].filter(r => r.clas.vig.length).length}</div><div class="l">rutas con lámina</div></div>
-      <div class="kpi"><div class="v">${[...b.rutas.values()].reduce((s, r) => s + r.clas.vig.length, 0)}</div><div class="l">dibujos vigentes</div></div>` : "";
+    k.innerHTML = b ? kpi(b.rutas.size, "Rutas en biblioteca", "carpeta", "info")
+      + kpi([...b.rutas.values()].filter(r => r.clas.vig.length).length, "Rutas con lámina", "hojas")
+      + kpi([...b.rutas.values()].reduce((s, r) => s + r.clas.vig.length, 0), "Dibujos vigentes", "archivo") : "";
     return;
   }
   const c = t => filas.filter(f => f.estado === t).length;
   const piezas = filas.reduce((s, f) => s + f.piezas.reduce((a, p) => a + p.total, 0), 0);
   const rutas = new Set(filas.map(f => norm(f.op.ruta))).size;
-  k.innerHTML = `
-    <div class="kpi"><div class="v">${filas.length}</div><div class="l">OPs · ${rutas} rutas</div></div>
-    <div class="kpi ok"><div class="v">${c("ok") + c("warn")}</div><div class="l">✅ OPs listas para anidar</div></div>
-    <div class="kpi warn"><div class="v">${c("warn")}</div><div class="l">⚠️ OPs con avisos</div></div>
-    <div class="kpi err"><div class="v">${c("err")}</div><div class="l">❌ OPs con errores</div></div>
-    <div class="kpi"><div class="v">${c("sincarpeta") + c("sinlamina")}</div><div class="l">📂 OPs sin dibujos de lámina</div></div>
-    <div class="kpi"><div class="v">${fmt(piezas)}</div><div class="l">piezas de lámina</div></div>`;
+  k.innerHTML = kpi(filas.length, "OPs del programa", "lista", "info", subK(`${rutas} rutas`))
+    + kpi(c("ok") + c("warn"), "OPs listas para anidar", "okc", "ok")
+    + kpi(c("warn"), "OPs con avisos", "aviso", "warn")
+    + kpi(c("err"), "OPs con errores", "error", "err")
+    + kpi(c("sincarpeta") + c("sinlamina"), "OPs sin dibujos de lámina", "carpeta")
+    + kpi(fmt(piezas), "Piezas de lámina", "nido");
 }
 
 function vistaOps(filas) {
   const el = $("#t-ops");
   $("#nOps").textContent = filas ? filas.length : 0;
-  if (!S.programa) { el.innerHTML = `<div class="card empty"><b>📄 Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad).</div>`; return; }
-  const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">⚠️ ${esc(t)}</p>`).join("");
-  if (!filas) { el.innerHTML = avP + `<div class="card empty"><b>${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs</b>Presiona 🔄 Leer biblioteca para cruzarlo contra los dibujos de la biblioteca.</div>`; return; }
+  if (!S.programa) { el.innerHTML = `<label class="card empty subir" for="fProg"><div class="ei">${ico("subir", 18)}</div><b>Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad). Haz clic aquí o usa Cargar programa.</label>`; return; }
+  const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">${ico("aviso")} ${esc(t)}</p>`).join("");
+  if (!filas) { el.innerHTML = avP + vacio("lista", `${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs`, "Presiona <b>Leer biblioteca</b> para cruzarlo contra los dibujos de la biblioteca."); return; }
   const filtro = ls.get("nl_filtro", "todas");
   const vis = filas.filter(f => filtro === "todas" || (filtro === "lamina" ? f.piezas.length : filtro === "problemas" ? ["err", "warn", "info"].includes(f.estado) : !f.piezas.length));
-  let h = avP + `<div class="toolbar"><span class="muted">${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
-    <label class="muted">Ver:</label>
-    <select id="selFiltro" style="font:inherit;padding:6px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink)">
+  let h = avP + `<div class="toolbar"><span class="muted">${ico("archivo")} ${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
+    <label class="f" style="margin:0">Ver</label>
+    <select id="selFiltro">
       ${[["todas", "Todas las OPs"], ["lamina", "Solo con lámina"], ["problemas", "Con errores o avisos"], ["sin", "Sin dibujos de lámina"]].map(([v, t]) => `<option value="${v}" ${v === filtro ? "selected" : ""}>${t}</option>`).join("")}
     </select></div>
     <div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Inicio</th><th class="num">Piezas lámina</th><th>Calibres</th><th>Estado</th></tr></thead><tbody>`;
@@ -1226,7 +1293,7 @@ function vistaOps(filas) {
       <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td></tr>`;
     if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="8"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
   });
-  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. 📂 Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca.</p>`;
+  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca.</p>`;
   el.innerHTML = h;
   $("#selFiltro").onchange = e => { ls.set("nl_filtro", e.target.value); render(); };
   el.querySelectorAll("tr.op").forEach(tr => tr.onclick = () => { const d = el.querySelector(`tr[data-d="${tr.dataset.i}"]`); if (d) d.classList.toggle("hide"); });
@@ -1247,15 +1314,15 @@ function explosion(filas) {
 
 function vistaExp(filas) {
   const el = $("#t-exp");
-  if (!filas) { el.innerHTML = `<div class="card empty"><b>⚖️ Explosión de material</b>Aparece al cruzar el programa con la biblioteca.</div>`; return; }
+  if (!filas) { el.innerHTML = vacio("barras", "Explosión de material", "Aparece al cruzar el programa con la biblioteca."); return; }
   const E = explosion(filas);
-  if (!E.length) { el.innerHTML = `<div class="card empty"><b>Sin piezas de lámina</b>Ninguna ruta del programa tiene dibujos de lámina todavía.</div>`; return; }
+  if (!E.length) { el.innerHTML = vacio("hojas", "Sin piezas de lámina", "Ninguna ruta del programa tiene dibujos de lámina todavía."); return; }
   let tA = 0, tK = 0, tH = 0, tP = 0;
   let h = `<div class="card tw"><table><thead><tr><th>Calibre</th><th class="num">Espesor</th><th class="num">OPs</th><th class="num">Dibujos</th><th class="num">Piezas</th><th class="num">Área neta m²</th><th class="num">Kg netos</th><th class="num">Láminas mín. teóricas</th><th class="num">Metros de corte</th><th>Notas</th></tr></thead><tbody>`;
   for (const g of E) {
     const t = ESPESOR[g.cal], kg = t ? g.area * t * DENS : 0, hojas = g.area / AREA_HOJA;
     tA += g.area; tK += kg; tH += Math.ceil(hojas - 1e-9); tP += g.piezas;
-    const nota = [g.cal !== "?" && (g.cal < CAL_MIN || g.cal > CAL_MAX) ? "⚠️ fuera de rango" : "", g.errores ? `❌ ${fmt(g.errores)} pz sin contar (dibujo con error)` : ""].filter(Boolean).join(" · ");
+    const nota = [g.cal !== "?" && (g.cal < CAL_MIN || g.cal > CAL_MAX) ? `<span style="color:var(--amber)">${ico("aviso")} fuera de rango</span>` : "", g.errores ? `<span style="color:var(--red)">${ico("error")} ${fmt(g.errores)} pz sin contar (dibujo con error)</span>` : ""].filter(Boolean).join(" · ");
     h += `<tr><td><b>CAL ${g.cal}</b></td><td class="num">${t ? fmt(t, 2) + " mm" : "—"}</td><td class="num">${g.ops.size}</td><td class="num">${g.refs.size}</td><td class="num">${fmt(g.piezas)}</td>
       <td class="num">${fmt(g.area, 3)}</td><td class="num">${fmt(kg, 1)}</td><td class="num"><b>${fmt(hojas, 2)}</b> → ${fmt(Math.ceil(hojas - 1e-9))}</td><td class="num">${fmt(g.corte / 1000, 1)}</td><td class="muted">${nota}</td></tr>`;
   }
@@ -1311,9 +1378,9 @@ function consumoPorOP(filas) {
 
 function vistaCon(filas) {
   const el = $("#t-con");
-  if (!filas) { el.innerHTML = `<div class="card empty"><b>📦 Consumo de lámina por OP</b>Aparece al cruzar el programa con la biblioteca.</div>`; return; }
+  if (!filas) { el.innerHTML = vacio("caja", "Consumo de lámina por OP", "Aparece al cruzar el programa con la biblioteca."); return; }
   const C = consumoPorOP(filas);
-  if (!C.length) { el.innerHTML = `<div class="card empty"><b>Sin piezas de lámina</b>Ninguna OP del programa tiene dibujos de lámina todavía.</div>`; return; }
+  if (!C.length) { el.innerHTML = vacio("hojas", "Sin piezas de lámina", "Ninguna OP del programa tiene dibujos de lámina todavía."); return; }
   let h = `<div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Área neta m²</th><th class="num">Kg netos</th><th class="num">Láminas teóricas</th><th class="num">Kg / mueble</th><th>Notas</th></tr></thead><tbody>`;
   let prev = null;
   for (const x of C) {
@@ -1323,12 +1390,12 @@ function vistaCon(filas) {
     if (nueva) h += `<td class="mono" rowspan="${span}">${esc(x.f.op.op)}</td><td class="mono" rowspan="${span}"><b>${esc(x.f.op.ruta)}</b></td><td rowspan="${span}">${esc(x.f.op.desc)}</td><td class="num" rowspan="${span}">${fmt(x.f.op.cant)}</td>`;
     h += `<td><span class="chip">CAL ${x.cal}</span></td><td class="num">${fmt(x.piezas)}</td><td class="num">${fmt(x.area, 3)}</td><td class="num">${fmt(x.kg, 2)}</td>
       <td class="num"><b>${fmt(x.hojas, 3)}</b></td><td class="num">${fmt(x.kg / x.f.op.cant, 3)}</td>
-      <td class="muted">${x.sinContar ? `❌ ${fmt(x.sinContar)} pz sin contar (dibujo con error)` : ""}</td></tr>`;
+      <td class="muted">${x.sinContar ? `<span style="color:var(--red)">${ico("error")} ${fmt(x.sinContar)} pz sin contar (dibujo con error)</span>` : ""}</td></tr>`;
   }
   const tA = C.reduce((s, x) => s + x.area, 0), tK = C.reduce((s, x) => s + x.kg, 0), tP = C.reduce((s, x) => s + x.piezas, 0);
   h += `<tr style="border-top:2px solid var(--line)"><td colspan="5"><b>Total programa</b></td><td class="num"><b>${fmt(tP)}</b></td><td class="num"><b>${fmt(tA, 3)}</b></td><td class="num"><b>${fmt(tK, 2)}</b></td><td class="num"><b>${fmt(tA / AREA_HOJA, 3)}</b></td><td></td><td></td></tr></tbody></table></div>
   <p class="note">Consumo <b>neto teórico</b>: el material que queda en las piezas (área real del contorno menos barrenos). Láminas teóricas = área ÷ ${fmt(AREA_HOJA, 3)} m² de una hoja 4×10. Con el motor de nidos se agregará el <b>consumo real</b> por OP: cada lámina se reparte entre las OPs que lleva en proporción al área de sus piezas, incluido el scrap.</p>`;
-  el.innerHTML = `<div class="toolbar"><span class="muted">Consumo neto de lámina por OP y calibre</span><span style="flex:1"></span><button id="bExpCon">⬇️ Excel</button></div>` + h;
+  el.innerHTML = `<div class="toolbar"><span class="muted">Consumo neto de lámina por OP y calibre</span><span style="flex:1"></span><button id="bExpCon">${ico("excel")}Excel</button></div>` + h;
   $("#bExpCon").onclick = () => exportarExcel(filas, listaPendientes(filas));
 }
 
@@ -1529,7 +1596,8 @@ function dxfNido(hoja, C, ops, opc = {}) {
 /* ============================== NIDOS ============================== */
 const NID_DEF = { sep: 3, margen: 5, res: 1.5, giro: true, minRetazo: 300, grabarRuta: true, usarRetazos: true };
 const paramsNid = () => { try { return { ...NID_DEF, ...JSON.parse(ls.get("nl_nest", "{}")) }; } catch { return { ...NID_DEF }; } };
-const PALETA = ["#2e86de", "#e1702a", "#8e44ad", "#16a085", "#c0392b", "#d4a20a", "#2c3e50", "#e84393", "#00a8a8", "#6d4c41", "#7f8c8d", "#27ae60", "#5f27cd", "#b33771"];
+// colores por OP en la vista de nidos: tonos de la OEE que se leen sobre fondo oscuro (sin amarillo, que es la capa MARCA)
+const PALETA = ["#4a9eff", "#3ecf8e", "#c084fc", "#fb7185", "#38bdf8", "#fb923c", "#2dd4bf", "#f472b6", "#a3e635", "#818cf8", "#e879f9", "#94a3b8", "#f87171", "#22d3ee"];
 const pesoHoja = cal => ESPESOR[cal] ? AREA_HOJA * ESPESOR[cal] * DENS : 0;
 const pad2 = n => String(n).padStart(2, "0");
 
@@ -1668,7 +1736,7 @@ function vistaNid(filas) {
   const el = $("#t-nid");
   const N = S.nidos;
   $("#nNid").textContent = N ? N.cals.reduce((s, C) => s + C.hojas.length, 0) : 0;
-  if (!filas) { el.innerHTML = `<div class="card empty"><b>🧩 Nidos de corte</b>Carga el programa y lee la biblioteca para generar los nidos.</div>`; return; }
+  if (!filas) { el.innerHTML = vacio("nido", "Nidos de corte", "Carga el programa y lee la biblioteca para generar los nidos."); return; }
   const P = paramsNid();
   const listas = filas.reduce((s, f) => s + f.piezas.filter(p => p.res.sev === "ok" || p.res.sev === "warn").reduce((a, p) => a + p.total, 0), 0);
   const siNo = (id, v, t) => `<label>${t}<select id="${id}"><option value="1" ${v ? "selected" : ""}>Sí</option><option value="0" ${!v ? "selected" : ""}>No</option></select></label>`;
@@ -1681,10 +1749,10 @@ function vistaNid(filas) {
       ${siNo("pGrab", P.grabarRuta, "Grabar ruta en piezas")}
       ${siNo("pUsaR", P.usarRetazos, "Usar retazos primero")}
       <span style="flex:1"></span>
-      ${N ? `<button id="bExpNid">⬇️ Excel</button>` : ""}<button id="bNid" class="${N ? "" : "pri"}" ${listas ? "" : "disabled"}>🧩 ${N ? "Volver a generar" : "Generar nidos"}</button>
-      ${N ? `<button id="bPub" class="pri">📤 Publicar para corte</button>` : ""}</div>
+      ${N ? `<button id="bExpNid">${ico("excel")}Excel</button>` : ""}<button id="bNid" class="${N ? "" : "pri"}" ${listas ? "" : "disabled"}>${ico(N ? "recargar" : "nido")}${N ? "Volver a generar" : "Generar nidos"}</button>
+      ${N ? `<button id="bPub" class="pri">${ico("subir")}Publicar para corte</button>` : ""}</div>
       <p class="note">Lámina 4×10 (${fmt(LAMINA.H, 0)} × ${fmt(LAMINA.W, 1)} mm) · se mezclan las OPs de cada calibre y las piezas se cargan hacia un extremo para dejar el sobrante como tira rectangular. ${fmt(listas)} piezas listas para anidar.</p></div>`;
-  if (!N) { el.innerHTML = h + `<div class="card empty"><b>Sin nidos generados</b>Revisa los parámetros y presiona 🧩 Generar nidos.</div>`; ligarNid(filas); return; }
+  if (!N) { el.innerHTML = h + vacio("nido", "Sin nidos generados", "Revisa los parámetros y presiona <b>Generar nidos</b>."); ligarNid(filas); return; }
 
   h += `<div class="card tw"><table><thead><tr><th>Calibre</th><th class="num">Piezas</th><th class="num">Láminas</th><th class="num">Hojas consumidas</th><th class="num">Kg reales</th><th class="num">Aprovechamiento</th><th>Retazos</th><th class="muted">Cálculo</th></tr></thead><tbody>`;
   for (const C of N.cals) {
@@ -1692,22 +1760,22 @@ function vistaNid(filas) {
     const usa = C.hojas.filter(x => x.retazoId).map(x => x.retazoId), gen = C.hojas.filter(x => x.recuperable);
     h += `<tr><td><b>CAL ${C.cal}</b></td><td class="num">${fmt(np)}</td><td class="num">${C.hojas.length}</td><td class="num"><b>${fmt(C.totalHojas, 2)}</b></td><td class="num">${fmt(C.totalHojas * pesoHoja(C.cal), 1)}</td>
       <td class="num">${chipEstado(C.aprov >= .75 ? "ok" : C.aprov >= .55 ? "warn" : "err", fmt(C.aprov * 100, 1) + " %")}</td>
-      <td>${usa.length ? `♻️ usa ${usa.map(esc).join(", ")}<br>` : ""}${gen.length ? gen.map(x => `➕ ${esc(x.idRetazo)} (${fmt(x.A, 0)} × ${fmt(x.retazo, 0)})`).join("<br>") : (usa.length ? "" : `<span class="muted">—</span>`)}</td>
-      <td class="muted">${fmt(C.r.ms / 1000, 1)} s · orden por ${esc(C.r.estrategia)}${C.r.sinColocar.length ? ` · ❌ ${C.r.sinColocar.length} sin colocar` : ""}</td></tr>`;
+      <td>${usa.length ? `<span style="color:var(--green)">${ico("reusar")} usa ${usa.map(esc).join(", ")}</span><br>` : ""}${gen.length ? gen.map(x => `${ico("mas")} ${esc(x.idRetazo)} (${fmt(x.A, 0)} × ${fmt(x.retazo, 0)})`).join("<br>") : (usa.length ? "" : `<span class="muted">—</span>`)}</td>
+      <td class="muted">${fmt(C.r.ms / 1000, 1)} s · orden por ${esc(C.r.estrategia)}${C.r.sinColocar.length ? ` · <span style="color:var(--red)">${ico("error")} ${C.r.sinColocar.length} sin colocar</span>` : ""}</td></tr>`;
   }
   h += `</tbody></table></div>`;
-  if (N.excluidas.length) h += `<p class="note">❌ No se anidaron ${fmt(N.excluidas.reduce((s, x) => s + x.p.total, 0))} piezas porque su dibujo tiene errores: ${[...new Set(N.excluidas.map(x => x.f.op.ruta + " · " + x.p.meta.n.pieza))].map(esc).join(", ")}.</p>`;
+  if (N.excluidas.length) h += `<p class="note" style="color:var(--red)">${ico("error")} No se anidaron ${fmt(N.excluidas.reduce((s, x) => s + x.p.total, 0))} piezas porque su dibujo tiene errores: ${[...new Set(N.excluidas.map(x => x.f.op.ruta + " · " + x.p.meta.n.pieza))].map(esc).join(", ")}.</p>`;
 
   for (const C of N.cals) {
-    h += `<details class="card"><summary>🧩 CAL ${C.cal} <span class="sub">${C.hojas.length} lámina(s) · ${fmt(C.aprov * 100, 1)} % aprovechamiento · vista previa</span></summary><div class="body">`;
+    h += `<details class="card"><summary>${ico("nido")}CAL ${C.cal} <span class="sub">${C.hojas.length} lámina(s) · ${fmt(C.aprov * 100, 1)} % aprovechamiento · vista previa</span></summary><div class="body">`;
     for (const hj of C.hojas) {
       const opsH = [...hj.porOp.entries()].sort((a, b) => b[1].area - a[1].area);
       h += `<div class="hoja"><div class="hd"><b class="mono">${esc(hj.id)}</b>
-        ${hj.retazoId ? `<span class="st ok">♻️ sobre retazo ${esc(hj.retazoId)} (${fmt(hj.L, 0)} mm)</span>` : ""}
+        ${hj.retazoId ? `<span class="st ok">${ico("reusar")}sobre retazo ${esc(hj.retazoId)} (${fmt(hj.L, 0)} mm)</span>` : ""}
         <span class="chip">${hj.pl.length} piezas</span><span class="chip">${fmt(hj.aprov * 100, 1)} % aprov.</span>
         <span class="chip">consumo ${fmt(hj.consumo, 2)} hoja</span>
-        ${hj.recuperable ? `<span class="st ok">➕ genera ${esc(hj.idRetazo)}</span>` : ""}
-        <span style="flex:1"></span><button class="bDxf" data-c="${esc(C.cal)}" data-n="${hj.n}" title="Descargar para probar en CypCut (no registra corte)">⬇️ DXF</button></div>
+        ${hj.recuperable ? `<span class="st ok">${ico("mas")}genera ${esc(hj.idRetazo)}</span>` : ""}
+        <span style="flex:1"></span><button class="bDxf" data-c="${esc(C.cal)}" data-n="${hj.n}" title="Descargar para probar en CypCut (no registra corte)">${ico("bajar")}DXF</button></div>
         ${svgHoja(C, hj, N, 260)}
         <div class="ops">${opsH.map(([oi, o]) => `<span title="${esc(N.ops[oi].desc)}"><i style="background:${PALETA[oi % PALETA.length]}"></i><b class="mono">${esc(N.ops[oi].op)}</b> ${esc(N.ops[oi].ruta)} · ${o.piezas} pz</span>`).join("")}</div></div>`;
     }
@@ -1715,7 +1783,7 @@ function vistaNid(filas) {
   }
 
   const filasOP = [...N.porOP.values()].sort((a, b) => a.oi - b.oi || (a.cal - b.cal));
-  h += `<details class="card"><summary>📦 Consumo real por OP <span class="sub">${fmt(filasOP.reduce((s, x) => s + x.hojas, 0), 3)} hojas · ${fmt(filasOP.reduce((s, x) => s + x.hojas * pesoHoja(x.cal), 0), 1)} kg</span></summary><div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Hojas reales</th><th class="num">Kg reales</th><th class="num">Kg / mueble</th></tr></thead><tbody>`;
+  h += `<details class="card"><summary>${ico("caja")}Consumo real por OP <span class="sub">${fmt(filasOP.reduce((s, x) => s + x.hojas, 0), 3)} hojas · ${fmt(filasOP.reduce((s, x) => s + x.hojas * pesoHoja(x.cal), 0), 1)} kg</span></summary><div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Calibre</th><th class="num">Piezas</th><th class="num">Hojas reales</th><th class="num">Kg reales</th><th class="num">Kg / mueble</th></tr></thead><tbody>`;
   for (const x of filasOP) {
     const o = N.ops[x.oi], kg = x.hojas * pesoHoja(x.cal);
     h += `<tr><td class="mono">${esc(o.op)}</td><td class="mono"><b>${esc(o.ruta)}</b></td><td>${esc(o.desc)}</td><td><span class="chip">CAL ${x.cal}</span></td>
@@ -1751,6 +1819,7 @@ async function cargarEstado() { const d = await jsonp({ accion: "estado" }, 9000
 function ponerEstado(d) {
   for (const k of ["programas", "nidos", "retazos"]) if (!Array.isArray(d[k])) d[k] = [];
   S.estado = d; S.estadoHora = new Date();
+  const n = $("#nRet"); if (n) n.textContent = d.retazos.filter(r => r.estado === "disponible").length;
 }
 /** POST sin CORS (el Apps Script recibe el cuerpo; la respuesta se confirma luego con "estado") */
 async function postServidor(obj) {
@@ -1790,7 +1859,7 @@ async function publicarNidos(btn) {
     const losQueFaltan = n => n === 1 ? "el nido que falta" : `los ${n} nidos que faltan`;
     const msg = ya.size
       ? `El programa ${N.id} quedó publicado a medias: ${ya.size} de ${total} nidos.\n\nSe publica solo ${losQueFaltan(total - ya.size)}.`
-      : `Publicar ${total} nido(s) del programa ${N.programa || ""} para corte.\n\nSe guardan los DXF en Drive y el operador los verá en ✂️ Corte.`;
+      : `Publicar ${total} nido(s) del programa ${N.programa || ""} para corte.\n\nSe guardan los DXF en Drive y el operador los verá en Corte.`;
     if (!confirm(msg)) { btn.disabled = false; return; }
     await postServidor({ accion: "guardarPrograma", programa: { id: N.id, nombre: N.programa, creado: N.generado.toISOString(), ops: N.ops.map(o => ({ ...o })), nidos: total, params: N.params } });
     // hasta 3 pasadas: cada una manda solo lo que el servidor todavía no confirma
@@ -1809,15 +1878,15 @@ async function publicarNidos(btn) {
       }
     }
     progreso(null);
-    if (ya.size < total) alert(`Se confirmaron ${ya.size} de ${total} nidos. Revisa la conexión y presiona 📤 Publicar otra vez: solo se manda ${losQueFaltan(total - ya.size)}.`);
-    else { alert(`✅ Programa ${N.id} publicado: ${total} nidos listos en ✂️ Corte.`); ls.set("nl_progCorte", N.id); }
+    if (ya.size < total) alert(`Se confirmaron ${ya.size} de ${total} nidos. Revisa la conexión y presiona Publicar para corte otra vez: solo se manda ${losQueFaltan(total - ya.size)}.`);
+    else { alert(`Programa ${N.id} publicado: ${total} nidos listos en Corte.`); ls.set("nl_progCorte", N.id); }
   } catch (e) { progreso(null); alert("Publicar: " + e.message); }
   btn.disabled = false;
 }
 
 /* ============================== VISTA DE CORTE (operador) ============================== */
-const EST = { "pendiente": ["⏳", "Faltante por cortar", "info"], "en proceso": ["🔥", "En proceso de corte", "warn"], "cortado": ["✅", "Cortado", "ok"] };
-const chipNido = e => { const x = EST[e] || ["", e, "info"]; return `<span class="st ${x[2]}">${x[0]} ${x[1]}</span>`; };
+const EST = { "pendiente": ["reloj", "Faltante por cortar", "info"], "en proceso": ["flama", "En proceso de corte", "warn"], "cortado": ["okc", "Cortado", "ok"] };
+const chipNido = e => { const x = EST[e] || ["circulo", e, "info"]; return `<span class="st ${x[2]}">${ico(x[0])}${x[1]}</span>`; };
 const fmtHora = s => s ? new Date(s).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 const jsonOps = s => { try { const v = typeof s === "string" ? JSON.parse(s || "{}") : s; return v && typeof v === "object" ? v : {}; } catch { return {}; } };
 const jsonLista = s => { const v = jsonOps(s); return Array.isArray(v) ? v : []; };
@@ -1825,7 +1894,7 @@ const jsonLista = s => { const v = jsonOps(s); return Array.isArray(v) ? v : [];
 function vistaCorte() {
   const el = $("#corte");
   const E = S.estado;
-  if (!E) { el.innerHTML = `<div class="card empty"><b>✂️ Corte</b>${S.cargandoEstado ? "Cargando programas…" : "Presiona 🔄 Actualizar para ver los nidos publicados."}<div style="margin-top:10px"><button id="bEst" class="pri">🔄 Actualizar</button></div></div>`; $("#bEst").onclick = refrescarCorte; return; }
+  if (!E) { el.innerHTML = vacio("tijeras", "Corte", S.cargandoEstado ? "Cargando programas…" : "Presiona <b>Actualizar</b> para ver los nidos publicados.", `<button id="bEst" class="pri">${ico("recargar")}Actualizar</button>`); $("#bEst").onclick = refrescarCorte; return; }
   // el refresco automático no debe cerrar lo que el operador abrió ni quitarle el cursor
   const abierto = (k, def) => (S.corteAbiertos.has(k) ? S.corteAbiertos.get(k) : def) ? "open" : "";
   const ae = document.activeElement, foco = ae && ae.id && el.contains(ae) ? { id: ae.id, a: ae.selectionStart, b: ae.selectionEnd } : null;
@@ -1840,25 +1909,25 @@ function vistaCorte() {
       <label>Programa<select id="cProg" style="width:auto;min-width:260px">${progs.map(p => `<option value="${esc(p.id)}" ${p.id === pid ? "selected" : ""}>${esc(p.id)} · ${esc(p.nombre)}</option>`).join("")}</select></label>
       <label>Operador<input id="cQuien" type="text" value="${esc(quien)}" placeholder="nombre"></label>
       <span style="flex:1"></span><span class="muted">Actualizado ${S.estadoHora ? S.estadoHora.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
-      ${prog && nidos.every(n => n.estado === "pendiente") ? `<button id="bElim" title="Solo si ningún nido se ha empezado a cortar">🗑️ Eliminar programa</button>` : ""}
-      <button id="bEst">🔄 Actualizar</button></div></div>`;
-  if (!prog) { el.innerHTML = h + `<div class="card empty"><b>Sin programas publicados</b>En 🗂️ Planeación genera los nidos y presiona 📤 Publicar para corte.</div>`; ligarCorte(foco); return; }
+      ${prog && nidos.every(n => n.estado === "pendiente") ? `<button id="bElim" class="peligro" title="Solo si ningún nido se ha empezado a cortar">${ico("basura")}Eliminar programa</button>` : ""}
+      <button id="bEst">${ico("recargar")}Actualizar</button></div></div>`;
+  if (!prog) { el.innerHTML = h + vacio("nido", "Sin programas publicados", "En Planeación → Nidos genera los nidos y presiona <b>Publicar para corte</b>."); ligarCorte(foco); return; }
 
   const tot = nidos.length || 1;
-  h += `<div class="kpis">
-    <div class="kpi ok"><div class="v">${cuenta("cortado")}</div><div class="l">✅ nidos cortados</div><div class="bar"><i style="width:${cuenta("cortado") / tot * 100}%"></i></div></div>
-    <div class="kpi warn"><div class="v">${cuenta("en proceso")}</div><div class="l">🔥 en proceso de corte</div></div>
-    <div class="kpi"><div class="v">${cuenta("pendiente")}</div><div class="l">⏳ faltantes por cortar</div></div>
-    <div class="kpi"><div class="v">${fmt(nidos.reduce((s, n) => s + Number(n.consumo || 0), 0), 2)}</div><div class="l">hojas del programa</div></div></div>`;
+  h += `<div class="kpis">`
+    + kpi(cuenta("cortado"), "Nidos cortados", "okc", "ok", `<div class="bar"><i style="width:${cuenta("cortado") / tot * 100}%;background:var(--green)"></i></div>`)
+    + kpi(cuenta("en proceso"), "En proceso de corte", "flama", "warn")
+    + kpi(cuenta("pendiente"), "Faltantes por cortar", "reloj", "info")
+    + kpi(fmt(nidos.reduce((s, n) => s + Number(n.consumo || 0), 0), 2), "Hojas del programa", "hojas") + `</div>`;
 
   // nido en proceso
   if (enProc) {
     const min = (Date.now() - new Date(enProc.inicio)) / 60000;
-    h += `<div class="card" style="padding:12px 14px;border-color:var(--warn)"><div class="hd" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:26px;font-weight:800">CAL ${esc(enProc.calibre)}</span>${chipNido("en proceso")}<b class="mono">${esc(enProc.id)}</b>
-      <span class="muted">desde ${fmtHora(enProc.inicio)} · ${fmt(min, 0)} min</span>${enProc.retazoUsado ? `<span class="st ok">♻️ sobre retazo ${esc(enProc.retazoUsado)}</span>` : ""}
-      <span style="flex:1"></span><button class="bBaj" data-id="${esc(enProc.id)}">⬇️ Bajar otra vez</button><button id="bTerm" class="pri">✅ Terminar corte</button></div>
-      <p class="note">Al descargar el siguiente nido este se marca como cortado automáticamente. Usa ✅ Terminar corte en el último nido o al final del turno.</p></div>`;
+    h += `<div class="card activo" style="padding:14px 16px"><div class="hd" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="cal-big">CAL ${esc(enProc.calibre)}</span>${chipNido("en proceso")}<b class="mono">${esc(enProc.id)}</b>
+      <span class="muted">desde ${fmtHora(enProc.inicio)} · ${fmt(min, 0)} min</span>${enProc.retazoUsado ? `<span class="st ok">${ico("reusar")}sobre retazo ${esc(enProc.retazoUsado)}</span>` : ""}
+      <span style="flex:1"></span><button class="bBaj" data-id="${esc(enProc.id)}">${ico("bajar")}Bajar otra vez</button><button id="bTerm" class="pri">${ico("ok")}Terminar corte</button></div>
+      <p class="note">Al descargar el siguiente nido este se marca como cortado automáticamente. Usa <b>Terminar corte</b> en el último nido o al final del turno.</p></div>`;
   }
 
   // nidos por calibre
@@ -1866,15 +1935,15 @@ function vistaCorte() {
   const sig = nidos.find(n => n.estado === "pendiente");
   for (const c of cals) {
     const ns = nidos.filter(n => String(n.calibre) === c), hechos = ns.filter(n => n.estado === "cortado").length;
-    h += `<details class="card" data-k="cal-${esc(c)}" ${abierto("cal-" + c, ns.some(n => n.estado !== "cortado"))}><summary>🧩 CAL ${esc(c)} <span class="sub">${hechos} de ${ns.length} cortados</span></summary><div class="body tw"><table><thead><tr><th>Lámina</th><th>Estado</th><th>Nido</th><th class="num">Piezas</th><th>OPs</th><th class="num">Aprov.</th><th>Retazo</th><th>Inicio / fin</th><th></th></tr></thead><tbody>`;
+    h += `<details class="card" data-k="cal-${esc(c)}" ${abierto("cal-" + c, ns.some(n => n.estado !== "cortado"))}><summary>${ico("nido")}CAL ${esc(c)} <span class="sub">${hechos} de ${ns.length} cortados</span></summary><div class="body tw"><table><thead><tr><th>Lámina</th><th>Estado</th><th>Nido</th><th class="num">Piezas</th><th>OPs</th><th class="num">Aprov.</th><th>Retazo</th><th>Inicio / fin</th><th></th></tr></thead><tbody>`;
     for (const n of ns) {
       const ops = jsonOps(n.ops);
       h += `<tr${sig && n.id === sig.id && !enProc ? ' style="background:var(--warn-bg)"' : ""}><td><b>${n.n} de ${n.total}</b></td><td>${chipNido(n.estado)}</td><td class="mono">${esc(n.id)}</td><td class="num">${n.piezas}</td>
         <td>${Object.entries(ops).map(([op, o]) => `<span class="chip" title="${esc(o.ruta)}">${esc(op)} · ${o.pz}</span>`).join(" ")}</td><td class="num">${fmt(Number(n.aprov) * 100, 1)} %</td>
-        <td>${n.retazoUsado ? `♻️ toma <b>${esc(n.retazoUsado)}</b>` : ""}${n.retazoNuevo ? `${n.retazoUsado ? "<br>" : ""}➕ deja ${esc(n.retazoNuevo)}` : ""}</td>
+        <td>${n.retazoUsado ? `<span style="color:var(--green)">${ico("reusar")} toma <b>${esc(n.retazoUsado)}</b></span>` : ""}${n.retazoNuevo ? `${n.retazoUsado ? "<br>" : ""}${ico("mas")} deja ${esc(n.retazoNuevo)}` : ""}</td>
         <td class="muted">${n.inicio ? fmtHora(n.inicio) : ""}${n.fin ? " → " + fmtHora(n.fin) + ` (${fmt(n.minutos, 0)} min)` : ""}</td>
-        <td style="white-space:nowrap"><button class="bBaj ${n.estado === "pendiente" ? "pri" : ""}" data-id="${esc(n.id)}">${n.estado === "pendiente" ? "⬇️ Descargar y cortar" : "⬇️ Bajar otra vez"}</button>
-        ${n.estado !== "pendiente" ? `<button class="bRev" data-id="${esc(n.id)}" title="Regresar a faltante por cortar">↩️</button>` : ""}</td></tr>`;
+        <td style="white-space:nowrap"><button class="bBaj ${n.estado === "pendiente" ? "pri" : ""}" data-id="${esc(n.id)}">${ico("bajar")}${n.estado === "pendiente" ? "Descargar y cortar" : "Bajar otra vez"}</button>
+        ${n.estado !== "pendiente" ? `<button class="bRev" data-id="${esc(n.id)}" title="Regresar a faltante por cortar">${ico("deshacer")}</button>` : ""}</td></tr>`;
     }
     h += `</tbody></table></div></details>`;
   }
@@ -1890,7 +1959,7 @@ function vistaCorte() {
   }
   const L = [...porOP.values()].filter(x => x.pz);
   const estOP = x => x.cortadas === x.pz ? "cortado" : (x.proceso || x.cortadas) ? "en proceso" : "pendiente";
-  h += `<details class="card" data-k="ops" ${abierto("ops", true)}><summary>📋 OPs del programa <span class="sub">${L.filter(x => estOP(x) === "cortado").length} cortadas · ${L.filter(x => estOP(x) === "en proceso").length} en proceso · ${L.filter(x => estOP(x) === "pendiente").length} faltantes</span></summary>
+  h += `<details class="card" data-k="ops" ${abierto("ops", true)}><summary>${ico("lista")}OPs del programa <span class="sub">${L.filter(x => estOP(x) === "cortado").length} cortadas · ${L.filter(x => estOP(x) === "en proceso").length} en proceso · ${L.filter(x => estOP(x) === "pendiente").length} faltantes</span></summary>
     <div class="body tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th>Estado</th><th class="num">Piezas láser</th><th class="num">Cortadas</th><th style="width:120px">Avance</th><th>Calibres</th><th class="num">Hojas</th><th class="num">Kg</th><th class="num">Kg / mueble</th></tr></thead><tbody>`;
   for (const x of L.sort((a, b) => ["en proceso", "pendiente", "cortado"].indexOf(estOP(a)) - ["en proceso", "pendiente", "cortado"].indexOf(estOP(b)))) {
     h += `<tr><td class="mono">${esc(x.op)}</td><td class="mono"><b>${esc(x.ruta)}</b></td><td>${esc(x.desc)}</td><td>${chipNido(estOP(x))}</td><td class="num">${fmt(x.pz)}</td><td class="num">${fmt(x.cortadas)}</td>
@@ -1899,29 +1968,83 @@ function vistaCorte() {
   }
   h += `</tbody></table></div></details>`;
 
-  // Retazos
-  const R = E.retazos;
-  const grupo = e => R.filter(r => r.estado === e);
-  const sumF = arr => arr.reduce((s, r) => s + Number(r.fraccion || 0), 0);
-  const gen = R.filter(r => r.estado !== "por cortar"), usados = grupo("usado"), desc = grupo("descartado"), disp = grupo("disponible"), asig = grupo("asignado");
-  h += `<details class="card" data-k="ret" ${abierto("ret", true)}><summary>♻️ Inventario de retazos <span class="sub">${disp.length} disponibles · ${fmt(sumF(disp), 2)} hojas equivalentes</span></summary><div class="body">
-    <div class="kpis" style="margin-top:4px">
-      <div class="kpi"><div class="v">${gen.length}</div><div class="l">generados · ${fmt(sumF(gen), 2)} hojas</div></div>
-      <div class="kpi ok"><div class="v">${usados.length}</div><div class="l">reutilizados · ${fmt(sumF(usados), 2)} hojas</div></div>
-      <div class="kpi"><div class="v">${disp.length + asig.length}</div><div class="l">en rack (${asig.length} asignados)</div></div>
-      <div class="kpi err"><div class="v">${desc.length}</div><div class="l">descartados · ${fmt(sumF(desc), 2)} hojas</div></div>
-      <div class="kpi ${gen.length ? "ok" : ""}"><div class="v">${gen.length ? fmt(sumF(usados) / sumF(gen) * 100, 0) + " %" : "—"}</div><div class="l">aprovechamiento de retazos</div></div></div>
-    <div class="tw"><table><thead><tr><th>Retazo</th><th>Estado</th><th>Calibre</th><th class="num">Medida mm</th><th class="num">Hoja eq.</th><th class="num">Kg</th><th>Origen</th><th>Uso</th><th></th></tr></thead><tbody>`;
-  const ordenR = ["disponible", "asignado", "por cortar", "usado", "descartado"];
-  const colR = { disponible: "ok", asignado: "warn", "por cortar": "info", usado: "info", descartado: "err" };
-  for (const r of R.slice().sort((a, b) => ordenR.indexOf(a.estado) - ordenR.indexOf(b.estado) || (+a.calibre - +b.calibre) || String(a.id).localeCompare(String(b.id))).slice(0, 200)) {
-    h += `<tr><td class="mono"><b>${esc(r.id)}</b></td><td><span class="st ${colR[r.estado] || "info"}">${esc(r.estado)}</span></td><td>CAL ${esc(r.calibre)}</td><td class="num">${fmt(r.ancho, 0)} × ${fmt(r.largo, 0)}</td>
-      <td class="num">${fmt(r.fraccion, 2)}</td><td class="num">${fmt(r.kg, 1)}</td><td class="mono muted">${esc(r.nidoOrigen)}</td><td class="mono muted">${esc(r.nidoUso || "")}</td>
-      <td>${r.estado === "disponible" || r.estado === "asignado" ? `<button class="bDesc" data-id="${esc(r.id)}" title="El retazo no está o está dañado">🗑️ No está</button>` : ""}</td></tr>`;
-  }
-  h += `</tbody></table></div><p class="note">Un retazo pasa a <b>disponible</b> cuando se corta el nido que lo genera, y los siguientes nidos del mismo calibre lo usan antes que una lámina nueva. Cada retazo lleva su ID grabado.</p></div></details>`;
+  // retazos: el detalle vive en su propio menú
+  const rProg = E.retazos.filter(r => nidos.some(n => n.id === r.nidoOrigen || n.id === r.nidoUso));
+  const dispT = E.retazos.filter(r => r.estado === "disponible");
+  h += `<div class="card" style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">${ico("retazo", 16)}
+    <span><b>Retazos</b> <span class="muted">· este programa genera ${rProg.filter(r => nidos.some(n => n.id === r.nidoOrigen)).length} y usa ${rProg.filter(r => nidos.some(n => n.id === r.nidoUso)).length} · ${dispT.length} disponibles en el rack (${fmt(dispT.reduce((s, r) => s + Number(r.fraccion || 0), 0), 2)} hojas)</span></span>
+    <span style="flex:1"></span><button id="bIrRet">${ico("retazo")}Ver inventario de retazos</button></div>`;
   el.innerHTML = h;
   ligarCorte(foco);
+}
+
+/* ============================== INVENTARIO DE RETAZOS ============================== */
+const EST_RET = {
+  disponible: ["Disponible", "ok", "okc"], asignado: ["Asignado a un nido", "warn", "reloj"], "por cortar": ["Se genera al cortar su nido", "info", "tijeras"],
+  usado: ["Usado", "gris", "reusar"], descartado: ["Descartado", "err", "prohibido"]
+};
+const chipRet = e => { const x = EST_RET[e] || [e, "gris", "circulo"]; return `<span class="st ${x[1]}">${ico(x[2])}${esc(x[0])}</span>`; };
+const fmtFecha = s => { if (!s) return ""; const d = new Date(s); return isNaN(d) ? esc(s) : d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" }); };
+
+function vistaRetazos() {
+  const el = $("#retazos"), E = S.estado;
+  if (!E) { el.innerHTML = vacio("retazo", "Inventario de retazos", S.cargandoEstado ? "Leyendo el inventario…" : "Presiona <b>Actualizar</b> para leer el inventario del Sheet.", `<button id="bEstR" class="pri">${ico("recargar")}Actualizar</button>`); $("#bEstR").onclick = refrescarCorte; return; }
+  const R = E.retazos, hojasDe = a => a.reduce((s, r) => s + Number(r.fraccion || 0), 0), kgDe = a => a.reduce((s, r) => s + Number(r.kg || 0), 0);
+  const grupo = e => R.filter(r => r.estado === e);
+  const disp = grupo("disponible"), asig = grupo("asignado"), porC = grupo("por cortar"), usados = grupo("usado"), desc = grupo("descartado");
+  const gen = R.filter(r => r.estado !== "por cortar");
+  const fEst = ls.get("nl_retEst", "rack"), fCal = ls.get("nl_retCal", "");
+  const cals = [...new Set(R.map(r => String(r.calibre)))].sort((a, b) => +a - +b);
+  const FILTROS = [["rack", "En rack (disponibles y asignados)"], ["disponible", "Disponibles"], ["asignado", "Asignados a un nido"], ["por cortar", "Se generan al cortar"], ["usado", "Usados"], ["descartado", "Descartados"], ["todos", "Todos"]];
+
+  let h = `<div class="card" style="padding:12px 14px"><div class="params">
+      <label>Estado<select id="rEst">${FILTROS.map(([v, t]) => `<option value="${v}" ${v === fEst ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label>Calibre<select id="rCal"><option value="">Todos</option>${cals.map(c => `<option value="${esc(c)}" ${c === fCal ? "selected" : ""}>CAL ${esc(c)}</option>`).join("")}</select></label>
+      <span style="flex:1"></span><span class="muted">Actualizado ${S.estadoHora ? S.estadoHora.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+      <button id="bEstR">${ico("recargar")}Actualizar</button></div></div>`;
+
+  h += `<div class="kpis">`
+    + kpi(disp.length, "Disponibles", "okc", "ok", subK(`${fmt(hojasDe(disp), 2)} hojas · ${fmt(kgDe(disp), 0)} kg`))
+    + kpi(asig.length, "Asignados a un nido", "reloj", "warn", subK(`${fmt(hojasDe(asig), 2)} hojas`))
+    + kpi(porC.length, "Se generan al cortar", "tijeras", "info", subK(`${fmt(hojasDe(porC), 2)} hojas`))
+    + kpi(usados.length, "Reutilizados", "reusar", "", subK(`${fmt(hojasDe(usados), 2)} hojas`))
+    + kpi(desc.length, "Descartados", "prohibido", "err", subK(`${fmt(kgDe(desc), 0)} kg`))
+    + kpi(gen.length ? fmt(hojasDe(usados) / hojasDe(gen) * 100, 0) + " %" : "—", "Aprovechamiento", "porciento", gen.length ? "ok" : "", subK("hojas reutilizadas ÷ generadas")) + `</div>`;
+
+  // existencia por calibre (lo que hay físicamente en el rack)
+  const rack = disp.concat(asig);
+  if (rack.length) {
+    h += `<div class="card tw"><div class="card-t" style="padding:12px 16px 0">${ico("rack")}Existencia en rack por calibre</div><table><thead><tr><th>Calibre</th><th class="num">Disponibles</th><th class="num">Asignados</th><th class="num">Hojas eq.</th><th class="num">Kg</th><th>Largos disponibles (mm)</th></tr></thead><tbody>`;
+    for (const c of [...new Set(rack.map(r => String(r.calibre)))].sort((a, b) => +a - +b)) {
+      const d = disp.filter(r => String(r.calibre) === c), a = asig.filter(r => String(r.calibre) === c), t = d.concat(a);
+      h += `<tr><td><b>CAL ${esc(c)}</b></td><td class="num">${d.length}</td><td class="num">${a.length}</td><td class="num">${fmt(hojasDe(t), 2)}</td><td class="num">${fmt(kgDe(t), 1)}</td>
+        <td>${d.slice().sort((x, y) => +y.largo - +x.largo).map(r => `<span class="chip" title="${esc(r.id)}">${fmt(r.largo, 0)}</span>`).join("") || `<span class="muted">—</span>`}</td></tr>`;
+    }
+    h += `</tbody></table></div>`;
+  }
+
+  const ordenR = ["disponible", "asignado", "por cortar", "usado", "descartado"];
+  const V = R.filter(r => (fEst === "todos" || (fEst === "rack" ? r.estado === "disponible" || r.estado === "asignado" : r.estado === fEst)) && (!fCal || String(r.calibre) === fCal))
+    .sort((a, b) => ordenR.indexOf(a.estado) - ordenR.indexOf(b.estado) || (+a.calibre - +b.calibre) || +b.largo - +a.largo || String(a.id).localeCompare(String(b.id)));
+  if (!V.length) h += vacio("retazo", R.length ? "Sin retazos con este filtro" : "Aún no hay retazos", R.length ? "Cambia el estado o el calibre." : "Los retazos aparecen al publicar nidos que dejan sobrante recuperable.");
+  else {
+    h += `<div class="card tw"><table class="nw"><thead><tr><th>Retazo</th><th>Estado</th><th>Calibre</th><th class="num">Ancho × largo mm</th><th class="num">Hoja eq.</th><th class="num">Kg</th><th>Sale del nido</th><th>Fecha</th><th>Usado en</th><th></th></tr></thead><tbody>`;
+    for (const r of V.slice(0, 300)) {
+      h += `<tr><td class="mono"><b>${esc(r.id)}</b></td><td>${chipRet(r.estado)}</td><td><span class="chip">CAL ${esc(r.calibre)}</span></td><td class="num">${fmt(r.ancho, 0)} × ${fmt(r.largo, 0)}</td>
+        <td class="num">${fmt(r.fraccion, 2)}</td><td class="num">${fmt(r.kg, 1)}</td><td class="mono muted">${esc(r.nidoOrigen)}</td><td class="muted">${fmtFecha(r.creado)}</td><td class="mono muted">${esc(r.nidoUso || "")}</td>
+        <td>${r.estado === "disponible" || r.estado === "asignado" ? `<button class="bDesc peligro" data-id="${esc(r.id)}" title="El retazo no está en el rack o está dañado">${ico("prohibido")}No está</button>` : ""}</td></tr>`;
+    }
+    h += `</tbody></table></div>${V.length > 300 ? `<p class="note">Se muestran 300 de ${V.length}; filtra por calibre para ver el resto.</p>` : ""}`;
+  }
+  h += `<p class="note">Un retazo pasa a <b>disponible</b> cuando se corta el nido que lo genera; los siguientes nidos del mismo calibre lo usan antes que una lámina nueva. Cada retazo lleva su ID grabado. <b>No está</b> lo marca como descartado y ya no se usa en nidos nuevos. Usados y descartados: se muestran los últimos 300.</p>`;
+  el.innerHTML = h;
+  $("#rEst").onchange = e => { ls.set("nl_retEst", e.target.value); vistaRetazos(); };
+  $("#rCal").onchange = e => { ls.set("nl_retCal", e.target.value); vistaRetazos(); };
+  $("#bEstR").onclick = refrescarCorte;
+  el.querySelectorAll(".bDesc").forEach(bt => bt.onclick = async () => {
+    if (!confirm(`¿Marcar el retazo ${bt.dataset.id} como descartado? Ya no se usará en nidos nuevos.`)) return;
+    try { const d = await jsonp({ accion: "descartarRetazo", id: bt.dataset.id, quien: ls.get("nl_quien", "") }); ponerEstado(d.estado); vistaRetazos(); } catch (e) { alert(e.message); }
+  });
 }
 
 function ligarCorte(foco) {
@@ -1936,10 +2059,7 @@ function ligarCorte(foco) {
     if (!confirm(`¿Regresar ${bt.dataset.id} a "faltante por cortar"?`)) return;
     try { const d = await jsonp({ accion: "revertir", id: bt.dataset.id, quien: q() }); ponerEstado(d.estado); vistaCorte(); } catch (e) { alert(e.message); }
   });
-  document.querySelectorAll(".bDesc").forEach(bt => bt.onclick = async () => {
-    if (!confirm(`¿Marcar el retazo ${bt.dataset.id} como descartado? Ya no se usará en nidos nuevos.`)) return;
-    try { const d = await jsonp({ accion: "descartarRetazo", id: bt.dataset.id, quien: q() }); ponerEstado(d.estado); vistaCorte(); } catch (e) { alert(e.message); }
-  });
+  const bir = $("#bIrRet"); if (bir) bir.onclick = () => ponerModo("retazos");
   const be = $("#bElim"); if (be) be.onclick = async () => {
     const id = $("#cProg").value;
     if (!confirm(`¿Eliminar el programa ${id}? Se borran sus nidos (DXF a la papelera) y se liberan los retazos que tenía asignados.`)) return;
@@ -1969,38 +2089,18 @@ async function descargarNido(id, quien, btn) {
   vistaCorte();
 }
 
+/** Vuelve a pintar la vista de Operación que esté abierta (Corte o Inventario de retazos) */
+function vistaOperacion() { const m = ls.get("nl_modo", "plan"); if (m === "corte") vistaCorte(); else if (m === "retazos") vistaRetazos(); }
 async function refrescarCorte() {
-  S.cargandoEstado = true; if (!S.estado) vistaCorte();
+  S.cargandoEstado = true; if (!S.estado) vistaOperacion();
   try { await cargarEstado(); } catch (e) { alert("No se pudo leer el estado: " + e.message); }
-  S.cargandoEstado = false; vistaCorte();
-}
-
-function vistaPen(filas) {
-  const el = $("#t-pen");
-  const L = listaPendientes(filas);
-  $("#nPen").textContent = L.filter(x => x.sev !== "info").length;
-  if (!S.biblio) { el.innerHTML = `<div class="card empty"><b>🛠️ Pendientes para Ingeniería</b>Aparecen al leer la biblioteca.</div>`; return; }
-  const solo = ls.get("nl_penprog", "1") === "1" && S.programa;
-  const V = solo ? L.filter(x => x.prog) : L;
-  let h = `<div class="toolbar">${S.programa ? `<label><input type="checkbox" id="chkProg" ${solo ? "checked" : ""}> Solo rutas del programa</label>` : ""}
-    <span style="flex:1"></span><button id="bExpPen">⬇️ Excel para Ingeniería</button></div>`;
-  if (!V.length) h += `<div class="card empty"><b>✅ Sin pendientes</b>Todos los dibujos revisados cumplen la convención.</div>`;
-  else {
-    h += `<div class="card tw"><table><thead><tr><th></th><th>Ruta</th><th>Archivo</th><th>Problema</th></tr></thead><tbody>`;
-    for (const x of V) h += `<tr><td>${ICON[x.sev]}</td><td class="mono"><b>${esc(x.ruta)}</b>${x.desc ? `<div class="muted" style="font-family:inherit">${esc(x.desc)}</div>` : ""}</td><td class="mono">${esc(x.archivo)}</td><td>${esc(x.txt)}</td></tr>`;
-    h += `</tbody></table></div>`;
-  }
-  const sinVal = [...S.biblio.rutas.values()].reduce((s, r) => s + r.clas.vig.filter(m => !S.analisis.has(m.id)).length, 0);
-  if (sinVal) h += `<p class="note">⏳ ${sinVal} dibujos de rutas fuera del programa aún no se revisan. Usa 📚 Biblioteca → 🔍 Validar toda la biblioteca.</p>`;
-  el.innerHTML = h;
-  const ch = $("#chkProg"); if (ch) ch.onchange = e => { ls.set("nl_penprog", e.target.checked ? "1" : "0"); render(); };
-  $("#bExpPen").onclick = () => exportarExcel(filas, L);
+  S.cargandoEstado = false; vistaOperacion();
 }
 
 function vistaBib() {
   const el = $("#t-bib");
   const b = S.biblio;
-  if (!b) { el.innerHTML = `<div class="card empty"><b>📚 Biblioteca de Ingeniería</b>Configura la conexión y presiona 🔄 Leer biblioteca, o usa 📁 Modo local.</div>`; $("#nBib").textContent = 0; return; }
+  if (!b) { el.innerHTML = vacio("libro", "Biblioteca de DXF", "Presiona <b>Leer biblioteca</b> (carpeta de tu equipo o Drive, según Conexión), o usa Modo local."); $("#nBib").textContent = 0; return; }
   const rutas = [...b.rutas.values()].filter(r => r.clas.vig.length || r.clas.prob.length).sort((a, b) => a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
   $("#nBib").textContent = rutas.length;
   const tot = rutas.reduce((s, r) => s + r.clas.vig.length, 0), val = rutas.reduce((s, r) => s + r.clas.vig.filter(m => S.analisis.has(m.id)).length, 0);
@@ -2008,14 +2108,14 @@ function vistaBib() {
   let h = `<div class="toolbar"><span class="muted">${b.origen === "drive" ? `Drive · ${esc(b.raiz)}${est} · leído ${cuando}${b.desdeCache ? " (caché del servidor)" : ""}`
     : b.origen === "carpeta" ? `Carpeta de tu equipo · ${esc(b.raiz)}${est} · leída ${cuando}` : "Modo local"}</span>
     <span style="flex:1"></span><span class="muted">${val} de ${tot} dibujos revisados</span>
-    <button id="bValTodo" ${val === tot ? "disabled" : ""}>🔍 Validar toda la biblioteca</button></div>`;
+    <button id="bValTodo" ${val === tot ? "disabled" : ""}>${ico("buscar")}Validar toda la biblioteca</button></div>`;
   for (const r of rutas) {
     const res = r.clas.vig.map(m => resultadoPieza(m));
     const sev = res.some(x => x.sev === "err") ? "err" : res.some(x => x.sev === "info") ? "info" : res.some(x => x.sev === "warn") ? "warn" : r.clas.vig.length ? "ok" : "info";
-    h += `<details class="card"><summary>${ICON[sev]} <span class="mono">${esc(r.ruta)}</span> <span class="sub">${r.clas.vig.length} vigentes${r.clas.resp.length ? ` · ${r.clas.resp.length} respaldo` : ""}${r.clas.prob.length ? ` · ${r.clas.prob.length} ignorados` : ""}</span></summary>
+    h += `<details class="card"><summary>${icoSev(sev)} <span class="mono">${esc(r.ruta)}</span> <span class="sub">${r.clas.vig.length} vigentes${r.clas.resp.length ? ` · ${r.clas.resp.length} respaldo` : ""}${r.clas.prob.length ? ` · ${r.clas.prob.length} ignorados` : ""}</span></summary>
       <div class="body"><div class="pcs">${r.clas.vig.map((m, i) => tarjetaPieza(m, res[i])).join("")}</div>
-      ${r.clas.resp.length ? `<p class="note">🗄️ Respaldo (no se usan): ${r.clas.resp.map(a => `<span class="mono">${esc(a.nombre)}</span>`).join(", ")}</p>` : ""}
-      ${r.clas.prob.length ? `<p class="note">🚫 Ignorados: ${r.clas.prob.map(p => `<span class="mono">${esc(p.a.nombre)}</span> (${esc(p.txt)})`).join(", ")}</p>` : ""}
+      ${r.clas.resp.length ? `<p class="note">${ico("archivar")} Respaldo (no se usan): ${r.clas.resp.map(a => `<span class="mono">${esc(a.nombre)}</span>`).join(", ")}</p>` : ""}
+      ${r.clas.prob.length ? `<p class="note">${ico("prohibido")} Ignorados: ${r.clas.prob.map(p => `<span class="mono">${esc(p.a.nombre)}</span> (${esc(p.txt)})`).join(", ")}</p>` : ""}
       </div></details>`;
   }
   el.innerHTML = h;
@@ -2025,7 +2125,7 @@ function vistaBib() {
 
 function render() {
   const filas = evaluarPrograma();
-  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaNid(filas); vistaCon(filas); vistaPen(filas); vistaBib(); vistaCapas();
+  vistaKPIs(filas); vistaOps(filas); vistaExp(filas); vistaNid(filas); vistaCon(filas); vistaBib(); vistaCapas();
   document.querySelectorAll(".pv[data-id]").forEach(d => d.onclick = () => abrirPieza(d.dataset.id));
 }
 
@@ -2037,7 +2137,7 @@ function abrirPieza(id) {
   $("#dlgT").textContent = `${meta.n.prefijo} · ${meta.n.pieza} · CAL ${meta.n.cal ?? "?"} · v${meta.n.version}`;
   $("#dlgC").innerHTML = svgPieza(res, true);
   $("#dlgF").innerHTML = `${res.bbox ? `<b>${fmt(res.ancho, 2)} × ${fmt(res.alto, 2)} mm</b> · ` : ""}${res.area ? `área neta ${fmt(res.area * 1e6, 0)} mm² · ${res.lazos} contornos (${res.barrenos} interiores) · corte ${fmt(res.perimCorte, 0)} mm · marca ${fmt(res.largoMarca, 0)} mm` : ""}
-    ${res.errores.concat(res.avisos).length ? `<ul class="iss" style="margin-top:6px">${res.errores.map(t => `<li class="err">❌ ${esc(t)}</li>`).join("")}${res.avisos.map(t => `<li class="warn">⚠️ ${esc(t)}</li>`).join("")}</ul>` : ""}
+    ${res.errores.concat(res.avisos).length ? `<ul class="iss" style="margin-top:6px">${res.errores.map(t => `<li class="err">${ico("error")}${esc(t)}</li>`).join("")}${res.avisos.map(t => `<li class="warn">${ico("aviso")}${esc(t)}</li>`).join("")}</ul>` : ""}
     <div class="mono muted" style="margin-top:6px">${esc(meta.nombre)}</div>`;
   $("#dlg").showModal();
 }
@@ -2257,7 +2357,7 @@ function syncCfg() {
   const fuente = fuenteBiblio(), carpeta = ls.get("nl_carpeta", "");
   $("#selFuente").value = fuente;
   $("#bCarpeta").classList.toggle("hide", fuente !== "carpeta");
-  $("#carpetaRes").textContent = fuente === "carpeta" ? (carpeta ? "📂 " + carpeta : "Aún no eliges la carpeta") : "";
+  $("#carpetaRes").innerHTML = fuente === "carpeta" ? (carpeta ? ico("carpeta") + " " + esc(carpeta) : "Aún no eliges la carpeta") : "";
   $("#cfgSub").textContent = (fuente === "carpeta" ? `Biblioteca: ${carpeta || "carpeta sin elegir"}` : "Biblioteca: Drive") + (url ? " · Apps Script configurado" : " · Apps Script sin configurar");
   if (!url) $("#cfgCard").open = true;
 }
@@ -2286,8 +2386,8 @@ $("#iUrl").onchange = e => { ls.set("nl_url", e.target.value.trim()); syncCfg();
 $("#iTok").onchange = e => { ls.set("nl_tok", e.target.value); };
 $("#bPing").onclick = async () => {
   $("#pingRes").textContent = "Probando…";
-  try { const d = await jsonp({ accion: "ping" }, 60000); $("#pingRes").textContent = "✅ Conectado a: " + d.raiz + (d.metodo ? " · " + d.metodo : ""); }
-  catch (e) { $("#pingRes").textContent = "❌ " + e.message; }
+  try { const d = await jsonp({ accion: "ping" }, 60000); $("#pingRes").innerHTML = `<span style="color:var(--green)">${ico("okc")} Conectado a: ${esc(d.raiz)}${d.metodo ? " · " + esc(d.metodo) : ""}</span>`; }
+  catch (e) { $("#pingRes").innerHTML = `<span style="color:var(--red)">${ico("error")} ${esc(e.message)}</span>`; }
 };
 $("#bCache").onclick = async () => {
   const carpeta = await idb.get(CLAVE_CARPETA);        // la carpeta elegida no es caché: se conserva
@@ -2353,16 +2453,17 @@ const SECCIONES = {
   exp: ["Explosión por calibre", "Material teórico de lámina por calibre"],
   nid: ["Nidos", "Acomodo de piezas por lámina y calibre, listo para CypCut"],
   con: ["Consumo por OP", "Consumo neto de lámina por OP y calibre"],
-  pen: ["Pendientes de Ingeniería", "Dibujos con errores o avisos de la biblioteca"],
-  bib: ["Biblioteca", "Dibujos DXF de lámina en Drive"],
-  corte: ["Corte", "Nidos por cortar, en proceso y cortados · inventario de retazos"]
+  bib: ["Biblioteca", "Dibujos DXF de lámina por ruta"],
+  corte: ["Corte", "Nidos por cortar, en proceso y cortados"],
+  retazos: ["Inventario de retazos", "Retazos en rack, asignados, usados y descartados por calibre"]
 };
+const TABS = ["ops", "exp", "nid", "con", "bib"], MODOS = ["plan", "corte", "retazos"];
 function ponerTitulo(k) { const [t, s] = SECCIONES[k] || ["", ""]; $("#pgTitulo").textContent = t; $("#pgSub").textContent = s; }
 function abrirTab(id) {
-  if (!SECCIONES[id] || id === "corte") id = "ops";
+  if (!TABS.includes(id)) id = "ops";
   const enPlan = !document.body.classList.contains("mcorte");
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", enPlan && x.dataset.t === id));
-  for (const s of ["ops", "exp", "nid", "con", "pen", "bib"]) $("#t-" + s).classList.toggle("hide", s !== id);
+  for (const s of TABS) $("#t-" + s).classList.toggle("hide", s !== id);
   ls.set("nl_tab", id);
   if (enPlan) ponerTitulo(id);
 }
@@ -2371,24 +2472,28 @@ $("#bMenu").onclick = () => { const c = $("#sidebar").classList.toggle("collapse
 $("#dlgX").onclick = () => $("#dlg").close();
 $("#dlg").onclick = e => { if (e.target.id === "dlg") $("#dlg").close(); };
 
+/** Planeación (pestañas del menú), Corte o Inventario de retazos */
 function ponerModo(m) {
-  $("#plan").classList.toggle("hide", m !== "plan"); $("#corte").classList.toggle("hide", m !== "corte");
-  document.body.classList.toggle("mcorte", m === "corte");
+  if (!MODOS.includes(m)) m = "plan";
+  for (const x of MODOS) $("#" + x).classList.toggle("hide", x !== m);
+  document.body.classList.toggle("mcorte", m !== "plan");          // fuera de Planeación se ocultan Cargar programa y Leer biblioteca
   document.querySelectorAll(".nav-item[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   const tab = ls.get("nl_tab", "ops");
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", m === "plan" && x.dataset.t === tab));
-  ponerTitulo(m === "corte" ? "corte" : tab);
+  ponerTitulo(m === "plan" ? tab : m);
   ls.set("nl_modo", m); if (location.hash !== "#" + m) history.replaceState(null, "", "#" + m);
-  if (m === "corte") { vistaCorte(); if (!S.estado && !S.cargandoEstado) refrescarCorte(); }
+  if (m !== "plan") { vistaOperacion(); if (!S.estado && !S.cargandoEstado) refrescarCorte(); }
 }
 document.querySelectorAll(".nav-item[data-m]").forEach(b => b.onclick = () => ponerModo(b.dataset.m));
-setInterval(() => { if (document.body.classList.contains("mcorte") && !document.hidden && !S.cargandoEstado) cargarEstado().then(vistaCorte).catch(() => {}); }, 60000);
+setInterval(() => { if (document.body.classList.contains("mcorte") && !document.hidden && !S.cargandoEstado) cargarEstado().then(vistaOperacion).catch(() => {}); }, 60000);
 
 (function init() {
   syncCfg();
   if (ls.get("nl_menu", innerWidth < 760 ? "1" : "0") === "1") $("#sidebar").classList.add("collapsed");
+  if (ls.get("nl_tab", "ops") === "pen") ls.set("nl_tab", "ops");      // el menú Pendientes ya no existe
   abrirTab(ls.get("nl_tab", "ops"));
-  ponerModo(location.hash === "#corte" ? "corte" : location.hash === "#plan" ? "plan" : ls.get("nl_modo", "plan"));
+  const h = location.hash.slice(1);
+  ponerModo(MODOS.includes(h) ? h : ls.get("nl_modo", "plan"));
   render();
 })();
 </script>

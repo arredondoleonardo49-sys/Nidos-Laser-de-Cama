@@ -228,13 +228,20 @@ dialog .ft{padding:10px 14px;font-size:12px}
   <div class="acciones">
     <span id="estado"></span>
     <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)">📄 Programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
-    <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca de Drive y validar los dibujos del programa">🔄 Leer biblioteca</button>
+    <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca (carpeta de tu equipo o Drive, según ⚙️ Conexión) y validar los dibujos del programa">🔄 Leer biblioteca</button>
   </div>
 </div>
 <main id="plan" class="content">
   <details class="card" id="cfgCard">
     <summary>⚙️ Conexión <span class="sub" id="cfgSub">sin configurar</span></summary>
     <div class="body">
+      <label class="f">Biblioteca de DXF (de dónde lee 🔄 Leer biblioteca)</label>
+      <div class="toolbar">
+        <select id="selFuente"><option value="carpeta">Carpeta de mi equipo</option><option value="drive">Drive (Apps Script)</option></select>
+        <button id="bCarpeta" title="Elegir la carpeta de la biblioteca en este equipo">📁 Elegir carpeta</button>
+        <input id="fCarpeta" type="file" webkitdirectory multiple hidden>
+        <span class="muted" id="carpetaRes"></span>
+      </div>
       <div class="grid2">
         <div><label class="f">URL de la aplicación web de Apps Script (termina en /exec)</label><input id="iUrl" type="text" placeholder="https://script.google.com/macros/s/…/exec"></div>
         <div><label class="f">Token (solo si lo configuraste en el script)</label><input id="iTok" type="password" placeholder="opcional"></div>
@@ -245,7 +252,7 @@ dialog .ft{padding:10px 14px;font-size:12px}
         <button id="bCache" title="Borrar los dibujos guardados en este navegador">🧹 Limpiar caché</button>
         <span class="muted" id="pingRes"></span>
       </div>
-      <p class="note">Los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando Ingeniería los modifica en Drive.</p>
+      <p class="note">Carpeta de mi equipo: se lee cada carpeta de modelo con sus DXF (también los DXF sueltos y las subcarpetas "DXF de lámina"); la carpeta se elige una vez y después solo se da permiso (Chrome o Edge). Drive: los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando cambian. Los nidos publicados y ✂️ Corte siempre van por el Apps Script.</p>
     </div>
   </details>
 
@@ -992,9 +999,79 @@ async function cargarListado(refrescar) {
   for (const r of rutas.values()) r.clas = clasificarRuta(r);
 }
 
+/* ---------- biblioteca en una carpeta del equipo ---------- */
+const fuenteBiblio = () => ls.get("nl_fuente", "carpeta");
+const CLAVE_CARPETA = "__carpeta_biblioteca__";             // manejador de la carpeta, guardado junto a la caché de dibujos
+const esDXF = n => /\.dxf(\.gz)*$/i.test(n);
+const rutaDeNombre = n => { const m = String(n).trim().match(/^(.+?)_(\d+)\s*PZ/i); return m ? m[1].trim() : "(sin ruta en el nombre)"; };
+
+/** La carpeta elegida antes (pidiendo permiso de lectura) o una nueva. null = el navegador no deja abrir carpetas */
+async function pedirCarpeta(otra) {
+  if (!window.showDirectoryPicker) return null;
+  let h = otra ? null : await idb.get(CLAVE_CARPETA);
+  if (h) {
+    let p = await h.queryPermission({ mode: "read" });
+    if (p !== "granted") p = await h.requestPermission({ mode: "read" });
+    if (p === "granted") return h;
+    throw new Error(`No se dio permiso para leer la carpeta "${h.name}". Vuelve a presionar 🔄 Leer biblioteca y acepta, o elige otra en ⚙️ Conexión → 📁 Elegir carpeta.`);
+  }
+  h = await showDirectoryPicker({ id: "nidos-biblioteca", mode: "read" });
+  await idb.put(CLAVE_CARPETA, h);
+  return h;
+}
+
+/** Lista de la carpeta: [{carpeta, nombre, file}]; file null = carpeta de modelo sin DXF */
+async function listarCarpeta(raiz) {
+  const lista = [];
+  for await (const [nombre, e] of raiz.entries()) {
+    if (e.kind === "file") { if (esDXF(nombre)) lista.push({ carpeta: null, nombre, file: await e.getFile() }); continue; }
+    const antes = lista.length;
+    for await (const [n2, e2] of e.entries()) {
+      if (e2.kind === "file") { if (esDXF(n2)) lista.push({ carpeta: nombre, nombre: n2, file: await e2.getFile() }); }
+      else if (norm(n2) === "DXF DE LAMINA") for await (const [n3, e3] of e2.entries()) if (e3.kind === "file" && esDXF(n3)) lista.push({ carpeta: nombre, nombre: n3, file: await e3.getFile() });
+    }
+    if (lista.length === antes) lista.push({ carpeta: nombre, nombre: "", file: null });
+  }
+  return lista;
+}
+
+/** Arma S.biblio con lo leído de la carpeta: la ruta es la carpeta del modelo o, si el DXF va suelto, el inicio de su nombre */
+function armarBiblioteca(raiz, lista) {
+  const rutas = new Map(); let sueltos = 0, enModelo = 0;
+  S.local.clear();
+  const ruta = (nombre, conDXF) => {
+    const k = norm(nombre);
+    if (!rutas.has(k)) rutas.set(k, { ruta: nombre, tieneLamina: false, archivos: [] });
+    const r = rutas.get(k); if (conDXF) r.tieneLamina = true; return r;
+  };
+  for (const x of lista) {
+    if (!x.file) { ruta(x.carpeta, false); continue; }
+    const r = ruta(x.carpeta || rutaDeNombre(x.nombre), true);
+    x.carpeta ? enModelo++ : sueltos++;
+    const id = `carpeta:${r.ruta}/${x.nombre}:${x.file.size}:${x.file.lastModified}`;
+    S.local.set(id, x.file);
+    r.archivos.push({ id, nombre: x.nombre, mod: new Date(x.file.lastModified).toISOString(), kb: Math.round(x.file.size / 1024) });
+  }
+  S.biblio = { origen: "carpeta", raiz, generado: new Date().toISOString(), estructura: sueltos ? (enModelo ? "mixta" : "plana") : "por modelo", rutas };
+  for (const r of rutas.values()) r.clas = clasificarRuta(r);
+}
+
+/** Lee la biblioteca de la carpeta del equipo. false = se abrió el selector clásico (su evento termina la lectura) */
+async function leerCarpeta(otra) {
+  const h = await pedirCarpeta(otra);
+  if (!h) { $("#fCarpeta").click(); return false; }
+  progreso(`Leyendo la carpeta ${h.name}…`, 0.05);
+  armarBiblioteca(h.name, await listarCarpeta(h));
+  ls.set("nl_carpeta", h.name);
+  return true;
+}
+
 async function obtenerTexto(meta) {
   const clave = meta.id;
-  if (S.biblio.origen === "local") return bytesATexto((await gunzipTodo(S.local.get(clave))).bytes);
+  if (S.biblio.origen !== "drive") {                   // modo local (bytes) o carpeta del equipo (File)
+    const src = S.local.get(clave);
+    return bytesATexto((await gunzipTodo(src instanceof Uint8Array ? src : new Uint8Array(await src.arrayBuffer()))).bytes);
+  }
   const c = await idb.get(clave);
   if (c && c.mod === meta.mod && c.txt) return c.txt;
   return null;
@@ -1132,7 +1209,7 @@ function vistaOps(filas) {
   $("#nOps").textContent = filas ? filas.length : 0;
   if (!S.programa) { el.innerHTML = `<div class="card empty"><b>📄 Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad).</div>`; return; }
   const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">⚠️ ${esc(t)}</p>`).join("");
-  if (!filas) { el.innerHTML = avP + `<div class="card empty"><b>${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs</b>Presiona 🔄 Leer biblioteca para cruzarlo contra los dibujos de Drive.</div>`; return; }
+  if (!filas) { el.innerHTML = avP + `<div class="card empty"><b>${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs</b>Presiona 🔄 Leer biblioteca para cruzarlo contra los dibujos de la biblioteca.</div>`; return; }
   const filtro = ls.get("nl_filtro", "todas");
   const vis = filas.filter(f => filtro === "todas" || (filtro === "lamina" ? f.piezas.length : filtro === "problemas" ? ["err", "warn", "info"].includes(f.estado) : !f.piezas.length));
   let h = avP + `<div class="toolbar"><span class="muted">${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
@@ -1927,7 +2004,9 @@ function vistaBib() {
   const rutas = [...b.rutas.values()].filter(r => r.clas.vig.length || r.clas.prob.length).sort((a, b) => a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
   $("#nBib").textContent = rutas.length;
   const tot = rutas.reduce((s, r) => s + r.clas.vig.length, 0), val = rutas.reduce((s, r) => s + r.clas.vig.filter(m => S.analisis.has(m.id)).length, 0);
-  let h = `<div class="toolbar"><span class="muted">${b.origen === "drive" ? `Drive · ${esc(b.raiz)}${b.estructura && b.estructura !== "por modelo" ? ` (biblioteca ${esc(b.estructura)})` : ""} · leído ${new Date(b.generado).toLocaleString("es-MX")}${b.desdeCache ? " (caché del servidor)" : ""}` : "Modo local"}</span>
+  const est = b.estructura && b.estructura !== "por modelo" ? ` (biblioteca ${esc(b.estructura)})` : "", cuando = new Date(b.generado).toLocaleString("es-MX");
+  let h = `<div class="toolbar"><span class="muted">${b.origen === "drive" ? `Drive · ${esc(b.raiz)}${est} · leído ${cuando}${b.desdeCache ? " (caché del servidor)" : ""}`
+    : b.origen === "carpeta" ? `Carpeta de tu equipo · ${esc(b.raiz)}${est} · leída ${cuando}` : "Modo local"}</span>
     <span style="flex:1"></span><span class="muted">${val} de ${tot} dibujos revisados</span>
     <button id="bValTodo" ${val === tot ? "disabled" : ""}>🔍 Validar toda la biblioteca</button></div>`;
   for (const r of rutas) {
@@ -2175,9 +2254,34 @@ async function exportarExcel(filas, L) {
 function syncCfg() {
   const url = ls.get("nl_url", "") || URL_DEFAULT;
   $("#iUrl").value = url; $("#iTok").value = ls.get("nl_tok", "");
-  $("#cfgSub").textContent = url ? "Apps Script configurado" : "sin configurar — abre para pegar la URL";
+  const fuente = fuenteBiblio(), carpeta = ls.get("nl_carpeta", "");
+  $("#selFuente").value = fuente;
+  $("#bCarpeta").classList.toggle("hide", fuente !== "carpeta");
+  $("#carpetaRes").textContent = fuente === "carpeta" ? (carpeta ? "📂 " + carpeta : "Aún no eliges la carpeta") : "";
+  $("#cfgSub").textContent = (fuente === "carpeta" ? `Biblioteca: ${carpeta || "carpeta sin elegir"}` : "Biblioteca: Drive") + (url ? " · Apps Script configurado" : " · Apps Script sin configurar");
   if (!url) $("#cfgCard").open = true;
 }
+$("#selFuente").onchange = e => { ls.set("nl_fuente", e.target.value); syncCfg(); };
+$("#bCarpeta").onclick = async () => {
+  try { if (await leerCarpeta(true)) { S.analisis.clear(); S.nidos = null; estado(`Biblioteca: ${S.biblio.rutas.size} rutas`); await analizarPrograma(); } }
+  catch (e) { if (e.name !== "AbortError") alert("Carpeta: " + e.message); }
+  progreso(null); syncCfg(); render();
+};
+$("#fCarpeta").onchange = async e => {                  // navegadores sin acceso a carpetas: selector clásico de carpeta
+  const files = [...e.target.files]; if (!files.length) return;
+  const lista = [], modelos = new Set(); let raiz = "";
+  for (const f of files) {
+    const p = (f.webkitRelativePath || f.name).split("/"); raiz = p[0];
+    if (p.length > 2) modelos.add(p[1]);
+    if (esDXF(f.name)) lista.push({ carpeta: p.length > 2 ? p[1] : null, nombre: f.name, file: f });
+  }
+  for (const m of modelos) if (!lista.some(x => x.carpeta === m)) lista.push({ carpeta: m, nombre: "", file: null });
+  S.analisis.clear(); S.nidos = null;
+  armarBiblioteca(raiz, lista); ls.set("nl_carpeta", raiz);
+  estado(`Biblioteca: ${S.biblio.rutas.size} rutas`);
+  try { await analizarPrograma(); } catch (err) { alert(err.message); }
+  progreso(null); e.target.value = ""; syncCfg(); render();
+};
 $("#iUrl").onchange = e => { ls.set("nl_url", e.target.value.trim()); syncCfg(); };
 $("#iTok").onchange = e => { ls.set("nl_tok", e.target.value); };
 $("#bPing").onclick = async () => {
@@ -2185,7 +2289,11 @@ $("#bPing").onclick = async () => {
   try { const d = await jsonp({ accion: "ping" }, 60000); $("#pingRes").textContent = "✅ Conectado a: " + d.raiz + (d.metodo ? " · " + d.metodo : ""); }
   catch (e) { $("#pingRes").textContent = "❌ " + e.message; }
 };
-$("#bCache").onclick = async () => { await idb.clear(); S.analisis.clear(); estado("Caché limpia"); render(); };
+$("#bCache").onclick = async () => {
+  const carpeta = await idb.get(CLAVE_CARPETA);        // la carpeta elegida no es caché: se conserva
+  await idb.clear(); if (carpeta) await idb.put(CLAVE_CARPETA, carpeta);
+  S.analisis.clear(); estado("Caché limpia"); render();
+};
 
 $("#fProg").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -2207,15 +2315,20 @@ async function analizarPrograma() {
 $("#bLeer").onclick = async () => {
   const b = $("#bLeer"); b.disabled = true;
   try {
-    progreso("Leyendo la biblioteca en Drive…", 0.05);
-    const refrescar = !!S.biblio && S.biblio.origen === "drive";
-    S.analisis.clear(); S.nidos = null;
-    await cargarListado(refrescar);
-    estado(`Biblioteca: ${S.biblio.rutas.size} rutas`);
-    await analizarPrograma();
+    let leida = true;
+    if (fuenteBiblio() === "carpeta") {
+      leida = await leerCarpeta(false);
+      if (leida) { S.analisis.clear(); S.nidos = null; }
+    } else {
+      progreso("Leyendo la biblioteca en Drive…", 0.05);
+      const refrescar = !!S.biblio && S.biblio.origen === "drive";
+      S.analisis.clear(); S.nidos = null;
+      await cargarListado(refrescar);
+    }
+    if (leida) { estado(`Biblioteca: ${S.biblio.rutas.size} rutas`); await analizarPrograma(); }
     progreso(null);
-  } catch (e) { progreso(null); alert(e.message); }
-  b.disabled = false; render();
+  } catch (e) { progreso(null); if (e.name !== "AbortError") alert(e.message); }
+  b.disabled = false; syncCfg(); render();
 };
 
 $("#fLocal").onchange = async e => {

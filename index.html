@@ -174,7 +174,7 @@ tr.det>td,tr.det:hover>td{background:var(--bg);padding:12px}
 .pc .m{font-size:12px;color:var(--text2)}
 .iss{margin:0;padding:0;list-style:none;font-size:12px}
 .iss li{padding:2px 0}
-.iss li.err{color:var(--red)} .iss li.warn{color:var(--amber)}
+.iss li.err{color:var(--red)} .iss li.warn{color:var(--amber)} .iss li.nota{color:var(--muted)}
 .leg{display:flex;gap:12px;font-size:12px;color:var(--text2);align-items:center}
 .leg i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
 .hoja{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px;margin-bottom:10px}
@@ -518,6 +518,7 @@ const ESPESOR = { 10:3.42, 11:3.04, 12:2.66, 13:2.28, 14:1.90, 16:1.52, 18:1.21,
 const CAL_MIN = 12, CAL_MAX = 24;
 const CAPAS = { CORTE: 3, MARCA: 2 };                 // nombre → color ACI esperado
 const TOL = 0.05;                                     // mm, unión de extremos
+const MICRO = 1.5;                                    // mm, hueco máximo en el corte que se toma como microunión (puente intencional)
 const LOTE = 20;                                      // archivos por petición
 const URL_DEFAULT = "https://script.google.com/macros/s/AKfycbyM9Stpc1fB97aRf0o5TTmu2KkD-5Zp-ZmXrezbN150RX1PpAAbO5kphlnixiob7wLf/exec";
 
@@ -675,9 +676,9 @@ function parseDXF(txt) {
       i += 2; continue;
     }
     if (sec === "TABLES" && c === 0 && v === "LAYER") {
-      let j = i + 1, nombre = null, color = 7;
-      while (j < P.length && P[j][0] !== 0) { if (P[j][0] === 2) nombre = P[j][1].trim(); if (P[j][0] === 62) color = parseInt(P[j][1], 10); j++; }
-      if (nombre != null) out.capas[nombre] = { color: Math.abs(color), apagada: color < 0 };
+      let j = i + 1, nombre = null, color = 7, tipoLinea = "CONTINUOUS";
+      while (j < P.length && P[j][0] !== 0) { if (P[j][0] === 2) nombre = P[j][1].trim(); if (P[j][0] === 62) color = parseInt(P[j][1], 10); if (P[j][0] === 6) tipoLinea = P[j][1].trim(); j++; }
+      if (nombre != null) out.capas[nombre] = { color: Math.abs(color), apagada: color < 0, tipoLinea };
       i = j; continue;
     }
     if (sec === "BLOCKS" && c === 0 && v === "BLOCK") out.bloques++;
@@ -705,9 +706,13 @@ function parseDXF(txt) {
     const col = g(62); e.color = col == null ? 256 : parseInt(col, 10);
     e.trueColor = g(420) != null;
     e.extrZ = parseFloat(g(230) ?? "1");
+    const tl = (g(6) ?? "BYLAYER").trim();              // tipo de línea; BYLAYER toma el de su capa
+    e.tipoLinea = /^BYLAYER$/i.test(tl) ? ((out.capas[e.capa] || {}).tipoLinea || "CONTINUOUS") : tl;
   }
   return out;
 }
+/** Línea punteada (HIDDEN, DASHED, CENTER…): en la capa de corte es un doblez o una referencia, nunca un corte */
+const esPunteada = e => !!e && !!e.tipoLinea && !/^(CONTINUOUS|BYLAYER|BYBLOCK)$/i.test(e.tipoLinea);
 
 /* ---------- geometría ---------- */
 const num = (raw, c, d = 0) => { const p = raw.find(x => x[0] === c); return p ? parseFloat(p[1]) : d; };
@@ -856,6 +861,38 @@ function encadenar(items) {
   }
   return { lazos, abiertos };
 }
+/** Microuniones: cierra las cadenas abiertas cuyos extremos quedan a ≤ max mm (puentes que dejan la pieza o el recorte sujetos).
+ *  Solo acepta lazos que cierran por completo; cada cadena que no cierra se queda abierta (error). Devuelve {lazos, abiertos, puentes, mm, max} */
+function puentear(abiertos, max) {
+  const pend = abiertos, usado = new Array(pend.length).fill(false), lazos = [], resto = [];
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  let puentes = 0, mm = 0, mayor = 0;
+  for (let s = 0; s < pend.length; s++) {
+    if (usado[s]) continue;
+    usado[s] = true;
+    let cad = pend[s], np = 0, nmm = 0, nmay = 0, cerro = false; const tomados = [];
+    for (;;) {
+      const ini = cad[0], fin = cad[cad.length - 1];
+      let mejor = null;
+      for (let k = 0; k < pend.length; k++) {
+        if (usado[k]) continue; const q = pend[k];
+        const opc = [[d(fin, q[0]), 0], [d(fin, q[q.length - 1]), 1], [d(ini, q[q.length - 1]), 2], [d(ini, q[0]), 3]];
+        for (const [dd, modo] of opc) if (dd <= max && (!mejor || dd < mejor.dd)) mejor = { dd, k, modo };
+      }
+      const dc = cad.length > 2 ? d(ini, fin) : Infinity;
+      if (dc <= max && (!mejor || dc <= mejor.dd)) {
+        if (dc > TOL) { np++; nmm += dc; nmay = Math.max(nmay, dc); } else cad = cad.slice(0, -1);
+        cerro = true; break;
+      }
+      if (!mejor) break;
+      const q = pend[mejor.k]; usado[mejor.k] = true; tomados.push(mejor.k); np++; nmm += mejor.dd; nmay = Math.max(nmay, mejor.dd);
+      cad = mejor.modo === 0 ? cad.concat(q) : mejor.modo === 1 ? cad.concat(q.slice().reverse()) : mejor.modo === 2 ? q.concat(cad) : q.slice().reverse().concat(cad);
+    }
+    if (cerro) { lazos.push(cad); puentes += np; mm += nmm; mayor = Math.max(mayor, nmay); }
+    else { resto.push(pend[s]); for (const k of tomados) usado[k] = false; }   // las demás pueden cerrar por su cuenta
+  }
+  return { lazos, abiertos: resto, puentes, mm, max: mayor };
+}
 function claveEnt(e, pl) {
   const r = v => Math.round(v * 100) / 100;
   if (!pl || !pl.pts) return null;
@@ -919,20 +956,33 @@ function analizar(dxf) {
   if (!capas.some(c => c.rol === "corte")) {
     let mejor = null, mayor = 0;
     for (const c of capas.filter(c => !c.rol)) {
-      const a = Math.max(0, ...encadenar(c.ents).lazos.map(q => Math.abs(areaF(q))));
+      const ch = encadenar(c.ents.filter(pl => !esPunteada(pl.ent))), lz = ch.lazos.concat(ch.abiertos.length ? puentear(ch.abiertos, MICRO).lazos : []);
+      const a = Math.max(0, ...lz.map(q => Math.abs(areaF(q))));
       if (a > mayor) { mayor = a; mejor = c; }
     }
     if (mejor) mejor.rol = "corte";
   }
   for (const c of capas) if (!c.rol) c.rol = "marca";
+  // líneas punteadas en la capa de corte (dobleces HIDDEN de las pestañas): no se cortan ni se graban
+  const notas = []; let punteadas = 0;
+  for (const c of capas) if (c.rol === "corte") { const n = c.ents.length; c.ents = c.ents.filter(pl => !esPunteada(pl.ent)); punteadas += n - c.ents.length; }
+  if (punteadas) notas.push(`${punteadas} línea(s) punteada(s) en la capa de corte (dobleces): no se cortan ni se graban`);
   const corte = capas.filter(c => c.rol === "corte").flatMap(c => c.ents);
   const dibujo = { corte: [], marca: capas.filter(c => c.rol === "marca").flatMap(c => c.ents), abiertos: [] };
-  const res = { errores, avisos, dibujo, ancho: 0, alto: 0, area: 0, perimCorte: 0, largoMarca: 0, lazos: 0, barrenos: 0,
+  const res = { errores, avisos, notas, dibujo, ancho: 0, alto: 0, area: 0, perimCorte: 0, largoMarca: 0, lazos: 0, barrenos: 0,
                 capas: capas.map(c => ({ nombre: c.nombre, rol: c.rol, origen: c.origen, n: c.ents.length, color: c.color })),
                 exp: capas.filter(c => c.rol === "corte" || c.rol === "marca").flatMap(c => c.ents.map(pl => ({ rol: c.rol, e: pl.ent, pl }))) };
   res.largoMarca = dibujo.marca.reduce((s, q) => s + largo(q.pts, q.cerrada), 0);
   if (!corte.length) add(errores, "No se encontró ninguna capa con un contorno cerrado de corte");
-  const { lazos, abiertos } = encadenar(corte.length ? corte : capas.flatMap(c => c.ents));
+  let { lazos, abiertos } = encadenar(corte.length ? corte : capas.flatMap(c => c.ents));
+  let micro = null;                                   // cortes con microuniones: el DXF del nido conserva los huecos (se exportan las entidades originales)
+  if (corte.length && abiertos.length) {
+    const p = puentear(abiertos, MICRO);
+    if (p.lazos.length) {
+      micro = p; lazos = lazos.concat(p.lazos); abiertos = p.abiertos; dibujo.puenteados = new Set(p.lazos);
+      notas.push(`${p.puentes} microunión(es) de hasta ${fmt(p.max, 1)} mm en el corte: se cortan respetando los huecos`);
+    }
+  }
   if (corte.length) {
     dibujo.corte = lazos; dibujo.abiertos = abiertos;
     const nc = capas.filter(c => c.rol === "corte").map(c => `"${c.nombre}"`).join(", ");
@@ -966,7 +1016,9 @@ function analizar(dxf) {
     if (exteriores.length > 1 && !abiertos.length) add(errores, `${exteriores.length} contornos exteriores independientes (¿varias piezas en un archivo?)`);
     res.area = info.reduce((s, L) => s + (L.prof % 2 ? -L.a : L.a), 0) / 1e6; // m²
     res.lazos = info.length; res.barrenos = info.filter(L => L.prof === 1).length;
-    res.perimCorte = lazos.reduce((s, p) => s + largo(p, true), 0) + abiertos.reduce((s, p) => s + largo(p, false), 0);
+    res.perimCorte = lazos.reduce((s, p) => s + largo(p, true), 0) + abiertos.reduce((s, p) => s + largo(p, false), 0) - (micro ? micro.mm : 0);
+    // un recorte interior con microuniones no se cae: para el nido es material (no se acomodan piezas ahí)
+    if (micro) dibujo.corteNido = info.filter(L => !(L.prof % 2 && dibujo.puenteados.has(L.p))).map(L => L.p);
     res.areaEnvolvente = res.ancho * res.alto / 1e6;
     // ¿cabe en la lámina?
     const W = res.ancho, H = res.alto;
@@ -1254,7 +1306,7 @@ function svgPieza(res, grande) {
 }
 
 function tarjetaPieza(meta, res, total) {
-  const iss = res.errores.map(t => `<li class="err">${ico("error")}${esc(t)}</li>`).concat(res.avisos.map(t => `<li class="warn">${ico("aviso")}${esc(t)}</li>`)).join("");
+  const iss = res.errores.map(t => `<li class="err">${ico("error")}${esc(t)}</li>`).concat(res.avisos.map(t => `<li class="warn">${ico("aviso")}${esc(t)}</li>`), (res.notas || []).map(t => `<li class="nota">${ico("circulo")}${esc(t)}</li>`)).join("");
   const dims = res.bbox ? `${fmt(res.ancho, 1)} × ${fmt(res.alto, 1)} mm` : "—";
   return `<div class="pc">
     <div class="t"><span>${esc(meta.n.pieza)}</span>${chipEstado(res.sev, { ok: "OK", warn: "Aviso", err: "Error", info: "Pendiente" }[res.sev])}</div>
@@ -1663,7 +1715,7 @@ async function generarNidos(filas) {
   for (let i = 0; i < cals.length; i++) {
     const c = cals[i], arr = [...porCal.get(c).values()];
     const datos = { params: { L: LAMINA.H, A: LAMINA.W, margen: P.margen, sep: P.sep, res: P.res, giro: P.giro, K: 4, retazos: P.usarRetazos ? retazosDisponibles(c) : [] },
-      piezas: arr.map(x => ({ key: x.meta.id, loops: x.res.dibujo.corte, area: x.res.area, inst: x.inst })) };
+      piezas: arr.map(x => ({ key: x.meta.id, loops: x.res.dibujo.corteNido || x.res.dibujo.corte, area: x.res.area, inst: x.inst })) };
     const r = await motorAnidar(datos, (fr, t) => progreso(`Calibre ${c} (${i + 1} de ${cals.length}) · ${t}`, (i + fr) / cals.length));
     out.cals.push({ cal: c, piezas: arr, r });
   }
@@ -2153,7 +2205,7 @@ function abrirPieza(id) {
   $("#dlgT").textContent = `${meta.n.prefijo} · ${meta.n.pieza} · CAL ${meta.n.cal ?? "?"} · v${meta.n.version}`;
   $("#dlgC").innerHTML = svgPieza(res, true);
   $("#dlgF").innerHTML = `${res.bbox ? `<b>${fmt(res.ancho, 2)} × ${fmt(res.alto, 2)} mm</b> · ` : ""}${res.area ? `área neta ${fmt(res.area * 1e6, 0)} mm² · ${res.lazos} contornos (${res.barrenos} interiores) · corte ${fmt(res.perimCorte, 0)} mm · marca ${fmt(res.largoMarca, 0)} mm` : ""}
-    ${res.errores.concat(res.avisos).length ? `<ul class="iss" style="margin-top:6px">${res.errores.map(t => `<li class="err">${ico("error")}${esc(t)}</li>`).join("")}${res.avisos.map(t => `<li class="warn">${ico("aviso")}${esc(t)}</li>`).join("")}</ul>` : ""}
+    ${res.errores.concat(res.avisos, res.notas || []).length ? `<ul class="iss" style="margin-top:6px">${res.errores.map(t => `<li class="err">${ico("error")}${esc(t)}</li>`).join("")}${res.avisos.map(t => `<li class="warn">${ico("aviso")}${esc(t)}</li>`).join("")}${(res.notas || []).map(t => `<li class="nota">${ico("circulo")}${esc(t)}</li>`).join("")}</ul>` : ""}
     <div class="mono muted" style="margin-top:6px">${esc(meta.nombre)}</div>`;
   $("#dlg").showModal();
 }

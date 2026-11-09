@@ -277,7 +277,7 @@ dialog .ft{padding:10px 14px;font-size:12px}
         <button id="bCache" title="Borrar los dibujos guardados en este navegador"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>Limpiar caché</button>
         <span class="muted" id="pingRes"></span>
       </div>
-      <p class="note">Carpeta de mi equipo: se lee cada carpeta de modelo con sus DXF (también los DXF sueltos y las subcarpetas "DXF de lámina"); la carpeta se elige una vez y después solo se da permiso (Chrome o Edge). Drive: los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando cambian. Los nidos publicados, Corte y el inventario de retazos siempre van por el Apps Script.</p>
+      <p class="note">Carpeta de mi equipo: se lee cada carpeta de modelo con sus DXF (también los DXF sueltos, las subcarpetas "DXF de lámina" y las carpetas de línea como AURA o NBF LINCOLN con un modelo por carpeta); la carpeta se elige una vez y después solo se da permiso (Chrome o Edge). Drive: los dibujos descargados se guardan en este navegador y solo se vuelven a bajar cuando cambian. Los nidos publicados, Corte y el inventario de retazos siempre van por el Apps Script.</p>
     </div>
   </details>
 
@@ -1003,7 +1003,9 @@ function clasificarRuta(r) {
     arr.sort((x, y) => y.n.version - x.n.version || String(y.n.fecha || "").localeCompare(String(x.n.fecha || "")) || String(y.mod || "").localeCompare(String(x.mod || "")));
     const v = arr[0]; v.avisosNombre = [];
     const empatados = arr.filter(x => x.n.version === v.n.version);
-    if (empatados.length > 1) v.avisosNombre.push(`Hay ${empatados.length} archivos v${v.n.version} de esta pieza; se tomó el de fecha más reciente (${v.n.fecha || "sin fecha"}). Confirmar con Ingeniería`);
+    const dirs = [...new Set(empatados.map(x => x.dir).filter(Boolean))];
+    if (dirs.length > 1) v.avisosNombre.push(`Esta pieza está en las carpetas ${dirs.join(" y ")}; se tomó la de fecha más reciente (${v.n.fecha || "sin fecha"}, carpeta ${v.dir}). Deja solo una`);
+    else if (empatados.length > 1) v.avisosNombre.push(`Hay ${empatados.length} archivos v${v.n.version} de esta pieza; se tomó el de fecha más reciente (${v.n.fecha || "sin fecha"}). Confirmar con Ingeniería`);
     if (norm(v.n.prefijo) !== norm(r.ruta)) v.avisosNombre.push(`El nombre empieza con "${v.n.prefijo}" pero está en la carpeta "${r.ruta}"`);
     if (v.n.cal == null) v.avisosNombre.push("ERR:Sin calibre en el nombre (CALxx)");
     else if (v.n.cal < CAL_MIN || v.n.cal > CAL_MAX) v.avisosNombre.push(`Calibre ${v.n.cal} fuera del rango ${CAL_MIN}–${CAL_MAX}`);
@@ -1086,17 +1088,29 @@ async function pedirCarpeta(otra) {
   return h;
 }
 
-/** Lista de la carpeta: [{carpeta, nombre, file}]; file null = carpeta de modelo sin DXF */
+const esSubLamina = n => norm(n) === "DXF DE LAMINA";
+/** Nombre de la ruta a partir de la carpeta del modelo: "LINB4524 - SIN DXF LAMINA" → "LINB4524" */
+const modeloDeCarpeta = n => String(n).replace(/\s+-\s+SIN\s+DXF\b.*$/i, "").trim();
+async function entradasDe(dir) { const f = [], d = []; for await (const [n, e] of dir.entries()) (e.kind === "file" ? f : d).push([n, e]); return { f, d }; }
+
+/** Lista de la carpeta: [{carpeta, familia, dir, nombre, file}]; file null = carpeta de modelo sin DXF.
+ *  Lee RAÍZ/<dxf> · RAÍZ/<modelo>/<dxf> · RAÍZ/<modelo>/DXF de lámina/<dxf> y las carpetas de línea (AURA, NBF LINCOLN…):
+ *  RAÍZ/<línea>/<modelo>/<dxf>. Una carpeta es de línea cuando tiene subcarpetas que no son "DXF de lámina". */
 async function listarCarpeta(raiz) {
   const lista = [];
+  const modelo = async (nombre, familia, c) => {           // DXF de una carpeta de modelo y de su subcarpeta "DXF de lámina"
+    const carpeta = modeloDeCarpeta(nombre), dir = familia ? `${familia}/${nombre}` : nombre, antes = lista.length;
+    for (const [n, e] of c.f) if (esDXF(n)) lista.push({ carpeta, familia, dir, nombre: n, file: await e.getFile() });
+    for (const [n, e] of c.d) if (esSubLamina(n)) for await (const [n3, e3] of e.entries()) if (e3.kind === "file" && esDXF(n3)) lista.push({ carpeta, familia, dir, nombre: n3, file: await e3.getFile() });
+    if (lista.length === antes) lista.push({ carpeta, familia, dir, nombre: "", file: null });
+  };
   for await (const [nombre, e] of raiz.entries()) {
-    if (e.kind === "file") { if (esDXF(nombre)) lista.push({ carpeta: null, nombre, file: await e.getFile() }); continue; }
-    const antes = lista.length;
-    for await (const [n2, e2] of e.entries()) {
-      if (e2.kind === "file") { if (esDXF(n2)) lista.push({ carpeta: nombre, nombre: n2, file: await e2.getFile() }); }
-      else if (norm(n2) === "DXF DE LAMINA") for await (const [n3, e3] of e2.entries()) if (e3.kind === "file" && esDXF(n3)) lista.push({ carpeta: nombre, nombre: n3, file: await e3.getFile() });
-    }
-    if (lista.length === antes) lista.push({ carpeta: nombre, nombre: "", file: null });
+    if (e.kind === "file") { if (esDXF(nombre)) lista.push({ carpeta: null, familia: null, nombre, file: await e.getFile() }); continue; }
+    const c = await entradasDe(e);
+    if (!c.d.some(([n]) => !esSubLamina(n))) { await modelo(nombre, null, c); continue; }
+    // carpeta de línea: cada subcarpeta es un modelo; un DXF suelto aquí toma la ruta del inicio de su nombre
+    for (const [n, f] of c.f) if (esDXF(n)) lista.push({ carpeta: null, familia: nombre, dir: nombre, nombre: n, file: await f.getFile() });
+    for (const [n, d] of c.d) if (!esSubLamina(n)) await modelo(n, nombre, await entradasDe(d));
   }
   return lista;
 }
@@ -1105,18 +1119,20 @@ async function listarCarpeta(raiz) {
 function armarBiblioteca(raiz, lista) {
   const rutas = new Map(); let sueltos = 0, enModelo = 0;
   S.local.clear();
-  const ruta = (nombre, conDXF) => {
+  const ruta = (nombre, conDXF, familia) => {
     const k = norm(nombre);
-    if (!rutas.has(k)) rutas.set(k, { ruta: nombre, tieneLamina: false, archivos: [] });
-    const r = rutas.get(k); if (conDXF) r.tieneLamina = true; return r;
+    if (!rutas.has(k)) rutas.set(k, { ruta: nombre, tieneLamina: false, archivos: [], familias: [] });
+    const r = rutas.get(k); if (conDXF) r.tieneLamina = true;
+    if (familia && !r.familias.includes(familia)) r.familias.push(familia);
+    return r;
   };
   for (const x of lista) {
-    if (!x.file) { ruta(x.carpeta, false); continue; }
-    const r = ruta(x.carpeta || rutaDeNombre(x.nombre), true);
-    x.carpeta ? enModelo++ : sueltos++;
-    const id = `carpeta:${r.ruta}/${x.nombre}:${x.file.size}:${x.file.lastModified}`;
+    if (!x.file) { ruta(x.carpeta, false, x.familia); continue; }
+    const r = ruta(x.carpeta || rutaDeNombre(x.nombre), true, x.familia);
+    (x.carpeta || x.familia) ? enModelo++ : sueltos++;     // los sueltos de una carpeta de línea no hacen "plana" la biblioteca
+    const id = `carpeta:${x.dir || r.ruta}/${x.nombre}:${x.file.size}:${x.file.lastModified}`;
     S.local.set(id, x.file);
-    r.archivos.push({ id, nombre: x.nombre, mod: new Date(x.file.lastModified).toISOString(), kb: Math.round(x.file.size / 1024) });
+    r.archivos.push({ id, nombre: x.nombre, dir: x.dir || "", mod: new Date(x.file.lastModified).toISOString(), kb: Math.round(x.file.size / 1024) });
   }
   S.biblio = { origen: "carpeta", raiz, generado: new Date().toISOString(), estructura: sueltos ? (enModelo ? "mixta" : "plana") : "por modelo", rutas };
   for (const r of rutas.values()) r.clas = clasificarRuta(r);
@@ -2112,7 +2128,7 @@ function vistaBib() {
   for (const r of rutas) {
     const res = r.clas.vig.map(m => resultadoPieza(m));
     const sev = res.some(x => x.sev === "err") ? "err" : res.some(x => x.sev === "info") ? "info" : res.some(x => x.sev === "warn") ? "warn" : r.clas.vig.length ? "ok" : "info";
-    h += `<details class="card"><summary>${icoSev(sev)} <span class="mono">${esc(r.ruta)}</span> <span class="sub">${r.clas.vig.length} vigentes${r.clas.resp.length ? ` · ${r.clas.resp.length} respaldo` : ""}${r.clas.prob.length ? ` · ${r.clas.prob.length} ignorados` : ""}</span></summary>
+    h += `<details class="card"><summary>${icoSev(sev)} <span class="mono">${esc(r.ruta)}</span> <span class="sub">${r.familias && r.familias.length ? esc(r.familias.join(", ")) + " · " : ""}${r.clas.vig.length} vigentes${r.clas.resp.length ? ` · ${r.clas.resp.length} respaldo` : ""}${r.clas.prob.length ? ` · ${r.clas.prob.length} ignorados` : ""}</span></summary>
       <div class="body"><div class="pcs">${r.clas.vig.map((m, i) => tarjetaPieza(m, res[i])).join("")}</div>
       ${r.clas.resp.length ? `<p class="note">${ico("archivar")} Respaldo (no se usan): ${r.clas.resp.map(a => `<span class="mono">${esc(a.nombre)}</span>`).join(", ")}</p>` : ""}
       ${r.clas.prob.length ? `<p class="note">${ico("prohibido")} Ignorados: ${r.clas.prob.map(p => `<span class="mono">${esc(p.a.nombre)}</span> (${esc(p.txt)})`).join(", ")}</p>` : ""}
@@ -2369,13 +2385,18 @@ $("#bCarpeta").onclick = async () => {
 };
 $("#fCarpeta").onchange = async e => {                  // navegadores sin acceso a carpetas: selector clásico de carpeta
   const files = [...e.target.files]; if (!files.length) return;
-  const lista = [], modelos = new Set(); let raiz = "";
-  for (const f of files) {
-    const p = (f.webkitRelativePath || f.name).split("/"); raiz = p[0];
-    if (p.length > 2) modelos.add(p[1]);
-    if (esDXF(f.name)) lista.push({ carpeta: p.length > 2 ? p[1] : null, nombre: f.name, file: f });
+  const items = files.map(f => ({ f, p: (f.webkitRelativePath || f.name).split("/") })), raiz = items[0].p[0];
+  // misma lectura que listarCarpeta: una carpeta con subcarpetas que no son "DXF de lámina" es de línea (AURA, NBF LINCOLN…)
+  const lineas = new Set(items.filter(x => x.p.length > 3 && !esSubLamina(x.p[2])).map(x => x.p[1]));
+  const lista = [], modelos = new Map();
+  for (const { f, p } of items) {
+    const familia = p.length > 2 && lineas.has(p[1]) ? p[1] : null, q =p.slice(familia ? 2 : 1, -1);   // carpetas entre la raíz (o la línea) y el archivo
+    if (q.length > 2 || (q.length === 2 && !esSubLamina(q[1]))) continue;               // más abajo de lo que se lee
+    const carpeta = q.length ? modeloDeCarpeta(q[0]) : null, dir = q.length ? (familia ? `${familia}/${q[0]}` : q[0]) : familia;
+    if (carpeta) modelos.set(dir, { carpeta, familia, dir });
+    if (esDXF(f.name)) lista.push({ carpeta, familia, dir, nombre: f.name, file: f });
   }
-  for (const m of modelos) if (!lista.some(x => x.carpeta === m)) lista.push({ carpeta: m, nombre: "", file: null });
+  for (const m of modelos.values()) if (!lista.some(x => x.file && x.dir === m.dir)) lista.push({ ...m, nombre: "", file: null });
   S.analisis.clear(); S.nidos = null;
   armarBiblioteca(raiz, lista); ls.set("nl_carpeta", raiz);
   estado(`Biblioteca: ${S.biblio.rutas.size} rutas`);

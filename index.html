@@ -252,6 +252,7 @@ dialog .ft{padding:10px 14px;font-size:12px}
   <div><div class="page-title" id="pgTitulo">Programa</div><div class="page-sub" id="pgSub"></div></div>
   <div class="acciones">
     <span id="estado"></span>
+    <button id="bProgNube" class="soloPlan" title="Programa de Láser de cama guardado en Programas de producción (programa general de Troqueles, solo OPs con corte)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>Desde Programas</button>
     <label class="btn soloPlan" title="Cargar programa de producción (Excel de BC)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Cargar programa<input id="fProg" type="file" accept=".xlsx,.xls" hidden></label>
     <button id="bLeer" class="pri soloPlan" title="Leer la biblioteca (carpeta de tu equipo o Drive, según Conexión) y validar los dibujos del programa"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Leer biblioteca</button>
   </div>
@@ -1260,18 +1261,107 @@ function resultadoPieza(meta) {
   return { ...a, errores, avisos, sev };
 }
 
-/* ---------- modelos excluidos: no pasan por Láser de cama; sus OPs se quitan solas de cada programa ---------- */
-// mismo criterio que la OEE (Troqueles): el modelo base es el Nº ruta de la OP. Se guarda en este navegador.
-const excluidos = () => { try { const x = JSON.parse(ls.get("nl_excluir", "[]")); return Array.isArray(x) ? x : []; } catch { return []; } };
-const rutasExcluidas = () => new Set(excluidos().map(x => norm(x.ruta)));
-function excluirModelo(ruta, desc) {
-  const L = excluidos().filter(x => norm(x.ruta) !== norm(ruta));
-  L.push({ ruta: String(ruta).trim(), desc: String(desc || "").trim(), fecha: new Date().toISOString().slice(0, 10) });
-  ls.set("nl_excluir", JSON.stringify(L));
+/* ---------- Programas de producción (nube): el programa de Láser de cama y los modelos que no pasan ---------- */
+// Leonardo, 2026-11-17: primero se arma el programa general de Troqueles en Programas de producción; el de Láser de cama
+// es ese programa filtrado (solo OPs con corte) y Nidos lo lee de la nube. Los modelos que no pasan se marcan SOLO allá.
+const PROGRAMAS_URL = "https://script.google.com/macros/s/AKfycbz2FkhVj77SGb93Se7AHrgryIVF01W9flBsvqpB_PxsZWdhGERtzMxCNTmTXGd-b7OqTA/exec";
+const CT_PROG = "TROQUELES", CORTE_PROG = "Laser de Cama";
+const urlProgramas = () => (ls.get("nl_progUrl", "") || PROGRAMAS_URL).trim();
+S.prog = { cargado: false, cargando: null, error: "", programas: [], fueraR: new Set(), fueraM: new Set(), sinCorteM: new Set(), ver: false };
+function jsonpProgramas(params, timeoutMs = 90000) {
+  return new Promise((res, rej) => {
+    const cb = "__nlp" + (++jsonpN) + "_" + Date.now(), sc = document.createElement("script");
+    const fin = () => { delete window[cb]; sc.remove(); clearTimeout(to); };
+    const to = setTimeout(() => { fin(); rej(new Error("Programas de producción no respondió")); }, timeoutMs);
+    window[cb] = d => { fin(); d && d.ok ? res(d) : rej(new Error((d && d.error) || "Respuesta inválida de Programas de producción")); };
+    sc.onerror = () => { fin(); rej(new Error("No se pudo conectar con Programas de producción")); };
+    sc.src = urlProgramas() + (urlProgramas().includes("?") ? "&" : "?") + new URLSearchParams({ ...params, callback: cb, _: Date.now() });
+    document.head.appendChild(sc);
+  });
 }
-const regresarModelo = ruta => ls.set("nl_excluir", JSON.stringify(excluidos().filter(x => norm(x.ruta) !== norm(ruta))));
-/** OPs del programa que sí se trabajan (sin los modelos excluidos) */
-const opsVigentes = () => { if (!S.programa) return []; const ex = rutasExcluidas(); return S.programa.ops.filter(o => !ex.has(norm(o.ruta))); };
+/** Trae de la nube de Programas los programas de Troqueles (versión vigente de cada día) y la base de modelos de Troqueles */
+function cargarProgramas() {
+  if (S.prog.cargando) return S.prog.cargando;
+  S.prog.cargando = (async () => {
+    try {
+      const d = await jsonpProgramas({ accion: "todo" });
+      const mods = Object.values(d.datos.modelos || {}).filter(x => x && x.ct === CT_PROG);
+      const fuera = mods.filter(x => x.estado === "fuera");
+      S.prog.fueraR = new Set(fuera.filter(x => x.tipo === "ruta").map(x => norm(x.valor)));
+      S.prog.fueraM = new Set(fuera.filter(x => x.tipo !== "ruta").map(x => norm(x.valor)));
+      S.prog.sinCorteM = new Set(mods.filter(x => x.estado === "dentro" && x.tipo !== "ruta" && x.proc && x.proc[CORTE_PROG] && x.proc[CORTE_PROG].on === false).map(x => norm(x.valor)));
+      const porDia = new Map();
+      for (const p of Object.values(d.datos.programas || {})) if (p && p.ct === CT_PROG && p.dia) { const a = porDia.get(p.dia); if (!a || p.version > a.version) porDia.set(p.dia, p); }
+      S.prog.programas = [...porDia.values()].sort((a, b) => a.dia.localeCompare(b.dia));
+      S.prog.cargado = true; S.prog.error = "";
+    } catch (e) { S.prog.error = e.message; }
+    S.prog.cargando = null;
+  })();
+  return S.prog.cargando;
+}
+/** Por qué una OP no va a Láser de cama según Programas de producción ("" = sí va) */
+const motivoFuera = op => S.prog.fueraR.has(norm(op.ruta)) || (op.cod && S.prog.fueraM.has(norm(op.cod))) ? "No pasa por Troqueles"
+  : op.cod && S.prog.sinCorteM.has(norm(op.cod)) ? "Sin corte en Láser de cama" : "";
+/** OPs del programa que sí se trabajan en Láser de cama */
+const opsVigentes = () => S.programa ? S.programa.ops.filter(o => !motivoFuera(o)) : [];
+const diaTxt = iso => { const [y, m, d] = String(iso).split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("es-MX", { weekday: "short", day: "2-digit", month: "short" }); };
+const opsConCorte = p => (p.rows || []).filter(r => r.proc && r.proc[CORTE_PROG] && r.proc[CORTE_PROG].on);
+/** Programa de Láser de cama: del programa general de Troqueles, solo las OPs con corte (mismo formato que leerPrograma) */
+function programaDesdeNube(p) {
+  const ops = [], usadas = new Set(), avisos = []; let sinRuta = 0;
+  for (const r of opsConCorte(p)) {
+    let op = String(r.op || "").trim() || `FILA-${ops.length + 1}`;
+    if (usadas.has(op)) { let k = 2; while (usadas.has(`${op}-${k}`)) k++; op = `${op}-${k}`; }
+    usadas.add(op);
+    if (!r.ruta) sinRuta++;
+    const ini = r.ini ? new Date(r.ini) : null;
+    ops.push({ op, ruta: String(r.ruta || r.modelo || "").trim(), cant: Number(r.cant) || 0, desc: String(r.desc || "").trim(), cod: String(r.modelo || "").trim(),
+               inicio: ini && !isNaN(ini) ? ini : null });
+  }
+  if (sinRuta) avisos.push(`${sinRuta} OP(s) sin Nº ruta en Programas de producción: se buscan en la biblioteca por su modelo`);
+  ops.sort((a, b) => (a.inicio ? a.inicio.getTime() : Infinity) - (b.inicio ? b.inicio.getTime() : Infinity));
+  return { nombre: `Programas de producción · Troqueles del ${diaTxt(p.dia)} (v${p.version}) · Láser de cama`, ops, avisos, origen: "programas", dia: p.dia, version: p.version, trabajo: p.trabajo || "" };
+}
+async function usarProgramaNube(dia) {
+  const p = S.prog.programas.find(x => x.dia === dia); if (!p) return;
+  S.programa = programaDesdeNube(p); S.nidos = null; S.prog.ver = false;
+  const nVig = opsVigentes().length;
+  estado(`Programa del ${diaTxt(p.dia)}: ${nVig} OPs con corte${S.programa.ops.length > nVig ? ` (${S.programa.ops.length - nVig} fuera según Programas)` : ""}`);
+  render();
+  if (S.biblio) { try { await analizarPrograma(); } catch (e) { alert(e.message); } render(); }
+}
+/** Lista de programas de Troqueles en la nube para elegir el de Láser de cama */
+function panelProgramasNube() {
+  const P = S.prog, hoy = fechaLocal(new Date());
+  if (P.cargando && !P.cargado) return vacio("recargar", "Leyendo Programas de producción…", "Trayendo los programas de Troqueles guardados en la nube.");
+  let h = `<div class="card" style="margin-bottom:12px"><div class="toolbar" style="padding:12px 14px 0"><b>${ico("lista")} Programas de Troqueles en Programas de producción</b><span class="sp" style="flex:1"></span>
+    <button id="bProgRec">${ico("recargar")}Actualizar</button>${S.programa ? `<button id="bProgCerrar">Cerrar</button>` : ""}</div><div class="body">`;
+  if (P.error) h += `<p class="note" style="color:var(--red)">${ico("error")} ${esc(P.error)}</p>`;
+  if (!P.programas.length) h += `<p class="note">${P.cargado ? "Aún no hay programas de Troqueles guardados. Se guardan en Programas de producción («Guardar los dos programas»)." : ""}</p>`;
+  else {
+    const sel = (P.programas.find(p => (p.trabajo || "") >= hoy) || P.programas[P.programas.length - 1]).dia;
+    h += `<div class="tw"><table><thead><tr><th>Programa del día</th><th>Se trabaja</th><th>Versión</th><th class="num">OPs con corte</th><th class="num">Muebles</th><th class="num">OPs del programa general</th><th></th></tr></thead><tbody>`;
+    for (const p of P.programas.slice().reverse()) {
+      const c = opsConCorte(p), cur = S.programa && S.programa.origen === "programas" && S.programa.dia === p.dia;
+      h += `<tr${p.dia === sel ? ' style="background:var(--bg3)"' : ""}><td><b>${esc(diaTxt(p.dia))}</b></td><td>${p.trabajo ? esc(diaTxt(p.trabajo)) + (p.trabajo === hoy ? ' <span class="chip">hoy</span>' : "") : "—"}</td>
+        <td class="mono">${esc(p.tipo || "")} v${p.version}</td><td class="num"><b>${fmt(c.length)}</b></td><td class="num">${fmt(c.reduce((s, r) => s + (Number(r.cant) || 0), 0))}</td><td class="num muted">${fmt((p.rows || []).length)}</td>
+        <td><button class="${p.dia === sel ? "pri" : ""}" data-pdia="${esc(p.dia)}">${cur ? "Volver a cargar" : "Cargar"}</button></td></tr>`;
+    }
+    h += `</tbody></table></div><p class="note">Es el programa general de Troqueles filtrado: solo las OPs con corte. Los modelos que no pasan y los que no llevan corte se marcan en Programas de producción.</p>`;
+  }
+  return h + `</div></div>`;
+}
+function enlazarProgramasNube(el) {
+  el.querySelectorAll("[data-pdia]").forEach(b => b.onclick = () => usarProgramaNube(b.dataset.pdia));
+  const r = el.querySelector("#bProgRec"); if (r) r.onclick = async () => { r.disabled = true; await cargarProgramas(); render(); };
+  const c = el.querySelector("#bProgCerrar"); if (c) c.onclick = () => { S.prog.ver = false; render(); };
+}
+async function abrirProgramasNube() {
+  S.prog.ver = true; ponerModo("plan"); abrirTab("ops"); render();
+  await cargarProgramas(); render();
+}
+/** Lista vieja de excluidos de este navegador (antes del 2026-11-17): ya no se usa; se avisa para marcarlos en Programas */
+const excluidosViejos = () => { try { const x = JSON.parse(ls.get("nl_excluir", "[]")); return Array.isArray(x) ? x : []; } catch { return []; } };
 
 /* ============================== EVALUACIÓN DEL PROGRAMA ============================== */
 function evaluarPrograma() {
@@ -1355,63 +1445,64 @@ function vistaKPIs(filas) {
 function vistaOps(filas) {
   const el = $("#t-ops");
   $("#nOps").textContent = filas ? filas.length : 0;
-  if (!S.programa) { el.innerHTML = `<label class="card empty subir" for="fProg"><div class="ei">${ico("subir", 18)}</div><b>Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad). Haz clic aquí o usa Cargar programa.</label>`; return; }
-  const ex = rutasExcluidas(), opsEx = S.programa.ops.filter(o => ex.has(norm(o.ruta)));
+  const panelP = S.prog.ver ? panelProgramasNube() : "";
+  if (!S.programa) {
+    el.innerHTML = panelP + (S.prog.ver ? "" : `<div class="card empty"><div class="ei">${ico("subir", 18)}</div><b>Carga el programa de Láser de cama</b>Tómalo de <b>Programas de producción</b> (el programa general de Troqueles, solo las OPs con corte) o carga el Excel de órdenes de Business Central (columnas Nº, Nº ruta, Cantidad).
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="pri" id="bVacioNube">${ico("lista")}Desde Programas</button><label class="btn" for="fProg">${ico("excel")}Excel de BC</label></div></div>`)
+      + avisoViejos();
+    const b = el.querySelector("#bVacioNube"); if (b) b.onclick = abrirProgramasNube;
+    enlazarProgramasNube(el); enlazarFuera(el); return;
+  }
+  const opsEx = S.programa.ops.filter(o => motivoFuera(o));
   const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">${ico("aviso")} ${esc(t)}</p>`).join("")
-    + (opsEx.length ? `<p class="note" style="margin:0 0 8px">${ico("prohibido")} ${opsEx.length} OP(s) de ${new Set(opsEx.map(o => norm(o.ruta))).size} modelo(s) excluido(s) no se toman en cuenta (ver <b>Modelos excluidos</b> al final).</p>` : "");
-  const panelEx = panelExcluidos(opsEx);
-  if (!filas) { el.innerHTML = avP + vacio("lista", `${esc(S.programa.nombre)} · ${S.programa.ops.length - opsEx.length} OPs`, "Presiona <b>Leer biblioteca</b> para cruzarlo contra los dibujos de la biblioteca.") + panelEx; enlazarExcluidos(el); return; }
+    + (S.prog.error && !S.prog.cargado ? `<p class="note" style="color:var(--warn);margin:0 0 8px">${ico("aviso")} No se pudo leer Programas de producción (${esc(S.prog.error)}): no se quitaron los modelos que no pasan.</p>` : "")
+    + (opsEx.length ? `<p class="note" style="margin:0 0 8px">${ico("prohibido")} ${opsEx.length} OP(s) no van a Láser de cama según Programas de producción (ver <b>Fuera de Láser de cama</b> al final).</p>` : "");
+  const panelEx = panelFuera(opsEx) + avisoViejos();
+  if (!filas) { el.innerHTML = panelP + avP + vacio("lista", `${esc(S.programa.nombre)} · ${S.programa.ops.length - opsEx.length} OPs`, "Presiona <b>Leer biblioteca</b> para cruzarlo contra los dibujos de la biblioteca.") + panelEx; enlazarProgramasNube(el); enlazarFuera(el); return; }
   const filtro = ls.get("nl_filtro", "todas");
   const vis = filas.filter(f => filtro === "todas" || (filtro === "lamina" ? f.piezas.length : filtro === "problemas" ? ["err", "warn", "info"].includes(f.estado) : !f.piezas.length));
-  let h = avP + `<div class="toolbar"><span class="muted">${ico("archivo")} ${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
+  let h = panelP + avP + `<div class="toolbar"><span class="muted">${ico(S.programa.origen === "programas" ? "lista" : "archivo")} ${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
     <label class="f" style="margin:0">Ver</label>
     <select id="selFiltro">
       ${[["todas", "Todas las OPs"], ["lamina", "Solo con lámina"], ["problemas", "Con errores o avisos"], ["sin", "Sin dibujos de lámina"]].map(([v, t]) => `<option value="${v}" ${v === filtro ? "selected" : ""}>${t}</option>`).join("")}
     </select></div>
-    <div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Inicio</th><th class="num">Piezas lámina</th><th>Calibres</th><th>Estado</th><th></th></tr></thead><tbody>`;
+    <div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Inicio</th><th class="num">Piezas lámina</th><th>Calibres</th><th>Estado</th></tr></thead><tbody>`;
   vis.forEach((f, i) => {
     const pz = f.piezas.reduce((s, p) => s + p.total, 0);
     const cals = [...new Set(f.piezas.map(p => p.meta.n.cal))].sort((a, b) => a - b).map(c => `<span class="chip">${c ?? "?"}</span>`).join("");
     h += `<tr class="op" data-i="${i}"><td class="mono">${esc(f.op.op)}</td><td class="mono"><b>${esc(f.op.ruta)}</b></td><td>${esc(f.op.desc)}</td><td class="num">${fmt(f.op.cant)}</td>
       <td class="muted">${f.op.inicio ? f.op.inicio.toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-      <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td>
-      <td><button class="bExc" data-ruta="${esc(f.op.ruta)}" data-desc="${esc(f.op.desc)}" title="Este modelo no pasa por Láser de cama: quitar sus OPs de este programa y de los siguientes">${ico("prohibido")}Excluir</button></td></tr>`;
-    if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="9"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
+      <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td></tr>`;
+    if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="8"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
   });
-  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca. <b>Excluir</b> quita el modelo de este programa y de los siguientes.</p>` + panelEx;
+  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca. Los modelos que no pasan por Troqueles o no llevan corte se marcan en <b>Programas de producción</b>.</p>` + panelEx;
   el.innerHTML = h;
   $("#selFiltro").onchange = e => { ls.set("nl_filtro", e.target.value); render(); };
   el.querySelectorAll("tr.op").forEach(tr => tr.onclick = () => { const d = el.querySelector(`tr[data-d="${tr.dataset.i}"]`); if (d) d.classList.toggle("hide"); });
-  el.querySelectorAll(".bExc").forEach(bt => bt.onclick = ev => {
-    ev.stopPropagation();
-    const ruta = bt.dataset.ruta, n = S.programa.ops.filter(o => norm(o.ruta) === norm(ruta)).length;
-    if (!confirm(`¿Excluir el modelo ${ruta}? Sus ${n} OP(s) se quitan de este programa y de los siguientes que cargues. Lo puedes regresar en «Modelos excluidos».`)) return;
-    excluirModelo(ruta, bt.dataset.desc); S.nidos = null; estado(`Modelo ${ruta} excluido`); render();
-  });
-  enlazarExcluidos(el);
+  enlazarProgramasNube(el); enlazarFuera(el);
 }
 
-/** Lista de modelos excluidos (todos los guardados; los del programa actual muestran sus OPs) */
-function panelExcluidos(opsEx) {
-  const L = excluidos().sort((a, b) => a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
-  if (!L.length) return "";
-  const porRuta = new Map(); for (const o of opsEx) { const k = norm(o.ruta); if (!porRuta.has(k)) porRuta.set(k, []); porRuta.get(k).push(o); }
+/** OPs del programa que no van a Láser de cama según Programas de producción (solo consulta: se marcan allá) */
+function panelFuera(opsEx) {
+  if (!opsEx.length) return "";
+  const grupos = new Map();
+  for (const o of opsEx) { const m = motivoFuera(o); if (!grupos.has(m)) grupos.set(m, []); grupos.get(m).push(o); }
   return `<details class="card" id="excCard" style="margin-top:12px" ${ls.get("nl_excAbierto", "0") === "1" ? "open" : ""}>
-    <summary>${ico("prohibido")} Modelos excluidos <span class="sub">${L.length} modelo(s)${opsEx.length ? ` · ${opsEx.length} OP(s) quitadas de este programa` : ""}</span></summary>
-    <div class="body"><div class="tw"><table><thead><tr><th>Modelo</th><th>Descripción</th><th class="num">OPs en este programa</th><th class="num">Muebles</th><th>Excluido el</th><th></th></tr></thead><tbody>
-    ${L.map(x => { const ops = porRuta.get(norm(x.ruta)) || [];
-      return `<tr><td class="mono"><b>${esc(x.ruta)}</b></td><td>${esc(x.desc || (ops[0] && ops[0].desc) || "")}</td><td class="num">${ops.length || "—"}</td><td class="num">${ops.length ? fmt(ops.reduce((s, o) => s + o.cant, 0)) : "—"}</td>
-        <td class="muted">${esc(x.fecha || "")}</td><td><button class="bReg" data-ruta="${esc(x.ruta)}" title="Volver a tomar en cuenta este modelo">${ico("deshacer")}Regresar</button></td></tr>`; }).join("")}
-    </tbody></table></div>
-    <p class="note">Los modelos excluidos no pasan por Láser de cama: sus OPs se quitan solas de cada programa que cargues. La lista se guarda en este navegador.</p></div></details>`;
+    <summary>${ico("prohibido")} Fuera de Láser de cama <span class="sub">${opsEx.length} OP(s) de este programa · según Programas de producción</span></summary>
+    <div class="body">${[...grupos].map(([m, L]) => `<p class="note" style="margin:0 0 6px"><b>${esc(m)}</b> · ${L.length} OP(s)</p><div style="margin-bottom:10px">${L.map(o => `<span class="chip">${esc(o.op)} · ${esc(o.ruta)} ×${fmt(o.cant)}</span>`).join(" ")}</div>`).join("")}
+    <p class="note">Se marcan en Programas de producción → Modelos fuera/dentro (Troqueles): «fuera» si el modelo no pasa por Troqueles, o sin corte si pasa pero no por la láser.</p></div></details>`;
 }
-function enlazarExcluidos(el) {
+/** Aviso único: la lista de excluidos que se guardaba en este navegador ya no se usa */
+function avisoViejos() {
+  const L = excluidosViejos(); if (!L.length) return "";
+  return `<div class="card" style="margin-top:12px;border-color:var(--amber)"><div class="body"><p class="note" style="margin:0 0 8px">${ico("aviso")} En este navegador se excluyeron ${L.length} modelo(s) con el botón «Excluir», que ya no existe:</p>
+    <div style="margin-bottom:8px">${L.map(x => `<span class="chip">${esc(x.ruta)}${x.desc ? " · " + esc(x.desc) : ""}</span>`).join(" ")}</div>
+    <p class="note" style="margin:0 0 8px">Ahora se marcan solo en <b>Programas de producción</b> (fuera de Troqueles, o sin corte si sí pasan por Troqueles). Márcalos allá y quita esta lista.</p>
+    <button id="bViejosOk">${ico("ok")}Ya los marqué, quitar esta lista</button></div></div>`;
+}
+function enlazarFuera(el) {
   const c = el.querySelector("#excCard"); if (c) c.ontoggle = () => ls.set("nl_excAbierto", c.open ? "1" : "0");
-  el.querySelectorAll(".bReg").forEach(bt => bt.onclick = async () => {
-    regresarModelo(bt.dataset.ruta); S.nidos = null; estado(`Modelo ${bt.dataset.ruta} regresado al programa`);
-    try { await analizarPrograma(); } catch (e) { alert(e.message); }
-    render();
-  });
+  const v = el.querySelector("#bViejosOk"); if (v) v.onclick = () => { ls.set("nl_excluir", "[]"); render(); };
 }
 
 function explosion(filas) {
@@ -2519,9 +2610,10 @@ $("#bCache").onclick = async () => {
 $("#fProg").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
-    S.programa = leerPrograma(new Uint8Array(await f.arrayBuffer()), f.name); S.nidos = null;
+    S.programa = leerPrograma(new Uint8Array(await f.arrayBuffer()), f.name); S.nidos = null; S.prog.ver = false;
+    if (!S.prog.cargado) await cargarProgramas();     // los modelos que no pasan se toman de Programas de producción
     const nVig = opsVigentes().length;
-    estado(`Programa: ${nVig} OPs${S.programa.ops.length > nVig ? ` (${S.programa.ops.length - nVig} de modelos excluidos)` : ""}`);
+    estado(`Programa: ${nVig} OPs${S.programa.ops.length > nVig ? ` (${S.programa.ops.length - nVig} fuera según Programas)` : ""}`);
     if (S.biblio) await analizarPrograma();
   } catch (err) { alert("Programa: " + err.message); }
   e.target.value = ""; render();
@@ -2617,6 +2709,8 @@ setInterval(() => { if (document.body.classList.contains("mcorte") && !document.
   const h = location.hash.slice(1);
   ponerModo(MODOS.includes(h) ? h : ls.get("nl_modo", "plan"));
   render();
+  $("#bProgNube").onclick = abrirProgramasNube;
+  cargarProgramas().then(render);                     // base de Programas de producción (modelos que no pasan) y programas de Troqueles
 })();
 </script>
 </body>

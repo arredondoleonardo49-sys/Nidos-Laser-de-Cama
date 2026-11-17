@@ -1260,11 +1260,24 @@ function resultadoPieza(meta) {
   return { ...a, errores, avisos, sev };
 }
 
+/* ---------- modelos excluidos: no pasan por Láser de cama; sus OPs se quitan solas de cada programa ---------- */
+// mismo criterio que la OEE (Troqueles): el modelo base es el Nº ruta de la OP. Se guarda en este navegador.
+const excluidos = () => { try { const x = JSON.parse(ls.get("nl_excluir", "[]")); return Array.isArray(x) ? x : []; } catch { return []; } };
+const rutasExcluidas = () => new Set(excluidos().map(x => norm(x.ruta)));
+function excluirModelo(ruta, desc) {
+  const L = excluidos().filter(x => norm(x.ruta) !== norm(ruta));
+  L.push({ ruta: String(ruta).trim(), desc: String(desc || "").trim(), fecha: new Date().toISOString().slice(0, 10) });
+  ls.set("nl_excluir", JSON.stringify(L));
+}
+const regresarModelo = ruta => ls.set("nl_excluir", JSON.stringify(excluidos().filter(x => norm(x.ruta) !== norm(ruta))));
+/** OPs del programa que sí se trabajan (sin los modelos excluidos) */
+const opsVigentes = () => { if (!S.programa) return []; const ex = rutasExcluidas(); return S.programa.ops.filter(o => !ex.has(norm(o.ruta))); };
+
 /* ============================== EVALUACIÓN DEL PROGRAMA ============================== */
 function evaluarPrograma() {
   if (!S.programa || !S.biblio) return null;
   const filas = [];
-  for (const op of S.programa.ops) {
+  for (const op of opsVigentes()) {
     const r = S.biblio.rutas.get(norm(op.ruta));
     const f = { op, r, piezas: [], sev: "info", etiqueta: "" };
     if (!r) { f.estado = "sincarpeta"; f.etiqueta = S.biblio.estructura === "plana" ? "Sin dibujos" : "Sin carpeta"; }
@@ -1330,8 +1343,8 @@ function vistaKPIs(filas) {
   }
   const c = t => filas.filter(f => f.estado === t).length;
   const piezas = filas.reduce((s, f) => s + f.piezas.reduce((a, p) => a + p.total, 0), 0);
-  const rutas = new Set(filas.map(f => norm(f.op.ruta))).size;
-  k.innerHTML = kpi(filas.length, "OPs del programa", "lista", "info", subK(`${rutas} rutas`))
+  const rutas = new Set(filas.map(f => norm(f.op.ruta))).size, nEx = S.programa.ops.length - filas.length;
+  k.innerHTML = kpi(filas.length, "OPs del programa", "lista", "info", subK(`${rutas} rutas${nEx ? ` · ${nEx} excluidas` : ""}`))
     + kpi(c("ok") + c("warn"), "OPs listas para anidar", "okc", "ok")
     + kpi(c("warn"), "OPs con avisos", "aviso", "warn")
     + kpi(c("err"), "OPs con errores", "error", "err")
@@ -1343,8 +1356,11 @@ function vistaOps(filas) {
   const el = $("#t-ops");
   $("#nOps").textContent = filas ? filas.length : 0;
   if (!S.programa) { el.innerHTML = `<label class="card empty subir" for="fProg"><div class="ei">${ico("subir", 18)}</div><b>Carga el programa de producción</b>El Excel de órdenes planificadas de Business Central (columnas Nº, Nº ruta, Cantidad). Haz clic aquí o usa Cargar programa.</label>`; return; }
-  const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">${ico("aviso")} ${esc(t)}</p>`).join("");
-  if (!filas) { el.innerHTML = avP + vacio("lista", `${esc(S.programa.nombre)} · ${S.programa.ops.length} OPs`, "Presiona <b>Leer biblioteca</b> para cruzarlo contra los dibujos de la biblioteca."); return; }
+  const ex = rutasExcluidas(), opsEx = S.programa.ops.filter(o => ex.has(norm(o.ruta)));
+  const avP = (S.programa.avisos || []).map(t => `<p class="note" style="color:var(--warn);margin:0 0 8px">${ico("aviso")} ${esc(t)}</p>`).join("")
+    + (opsEx.length ? `<p class="note" style="margin:0 0 8px">${ico("prohibido")} ${opsEx.length} OP(s) de ${new Set(opsEx.map(o => norm(o.ruta))).size} modelo(s) excluido(s) no se toman en cuenta (ver <b>Modelos excluidos</b> al final).</p>` : "");
+  const panelEx = panelExcluidos(opsEx);
+  if (!filas) { el.innerHTML = avP + vacio("lista", `${esc(S.programa.nombre)} · ${S.programa.ops.length - opsEx.length} OPs`, "Presiona <b>Leer biblioteca</b> para cruzarlo contra los dibujos de la biblioteca.") + panelEx; enlazarExcluidos(el); return; }
   const filtro = ls.get("nl_filtro", "todas");
   const vis = filas.filter(f => filtro === "todas" || (filtro === "lamina" ? f.piezas.length : filtro === "problemas" ? ["err", "warn", "info"].includes(f.estado) : !f.piezas.length));
   let h = avP + `<div class="toolbar"><span class="muted">${ico("archivo")} ${esc(S.programa.nombre)}</span><span class="sp" style="flex:1"></span>
@@ -1352,19 +1368,50 @@ function vistaOps(filas) {
     <select id="selFiltro">
       ${[["todas", "Todas las OPs"], ["lamina", "Solo con lámina"], ["problemas", "Con errores o avisos"], ["sin", "Sin dibujos de lámina"]].map(([v, t]) => `<option value="${v}" ${v === filtro ? "selected" : ""}>${t}</option>`).join("")}
     </select></div>
-    <div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Inicio</th><th class="num">Piezas lámina</th><th>Calibres</th><th>Estado</th></tr></thead><tbody>`;
+    <div class="card tw"><table><thead><tr><th>OP</th><th>Ruta</th><th>Descripción</th><th class="num">Muebles</th><th>Inicio</th><th class="num">Piezas lámina</th><th>Calibres</th><th>Estado</th><th></th></tr></thead><tbody>`;
   vis.forEach((f, i) => {
     const pz = f.piezas.reduce((s, p) => s + p.total, 0);
     const cals = [...new Set(f.piezas.map(p => p.meta.n.cal))].sort((a, b) => a - b).map(c => `<span class="chip">${c ?? "?"}</span>`).join("");
     h += `<tr class="op" data-i="${i}"><td class="mono">${esc(f.op.op)}</td><td class="mono"><b>${esc(f.op.ruta)}</b></td><td>${esc(f.op.desc)}</td><td class="num">${fmt(f.op.cant)}</td>
       <td class="muted">${f.op.inicio ? f.op.inicio.toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-      <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td></tr>`;
-    if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="8"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
+      <td class="num">${pz ? fmt(pz) : "—"}</td><td>${cals}</td><td>${chipEstado(f.estado, f.etiqueta)}</td>
+      <td><button class="bExc" data-ruta="${esc(f.op.ruta)}" data-desc="${esc(f.op.desc)}" title="Este modelo no pasa por Láser de cama: quitar sus OPs de este programa y de los siguientes">${ico("prohibido")}Excluir</button></td></tr>`;
+    if (f.piezas.length) h += `<tr class="det hide" data-d="${i}"><td colspan="9"><div class="pcs">${f.piezas.map(p => tarjetaPieza(p.meta, p.res, p.total)).join("")}</div></td></tr>`;
   });
-  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca.</p>`;
+  h += `</tbody></table></div><p class="note">Clic en una OP para ver sus piezas. Sin carpeta / sin dibujos: la ruta no lleva lámina o su DXF aún no está en la biblioteca. <b>Excluir</b> quita el modelo de este programa y de los siguientes.</p>` + panelEx;
   el.innerHTML = h;
   $("#selFiltro").onchange = e => { ls.set("nl_filtro", e.target.value); render(); };
   el.querySelectorAll("tr.op").forEach(tr => tr.onclick = () => { const d = el.querySelector(`tr[data-d="${tr.dataset.i}"]`); if (d) d.classList.toggle("hide"); });
+  el.querySelectorAll(".bExc").forEach(bt => bt.onclick = ev => {
+    ev.stopPropagation();
+    const ruta = bt.dataset.ruta, n = S.programa.ops.filter(o => norm(o.ruta) === norm(ruta)).length;
+    if (!confirm(`¿Excluir el modelo ${ruta}? Sus ${n} OP(s) se quitan de este programa y de los siguientes que cargues. Lo puedes regresar en «Modelos excluidos».`)) return;
+    excluirModelo(ruta, bt.dataset.desc); S.nidos = null; estado(`Modelo ${ruta} excluido`); render();
+  });
+  enlazarExcluidos(el);
+}
+
+/** Lista de modelos excluidos (todos los guardados; los del programa actual muestran sus OPs) */
+function panelExcluidos(opsEx) {
+  const L = excluidos().sort((a, b) => a.ruta.localeCompare(b.ruta, "es", { numeric: true }));
+  if (!L.length) return "";
+  const porRuta = new Map(); for (const o of opsEx) { const k = norm(o.ruta); if (!porRuta.has(k)) porRuta.set(k, []); porRuta.get(k).push(o); }
+  return `<details class="card" id="excCard" style="margin-top:12px" ${ls.get("nl_excAbierto", "0") === "1" ? "open" : ""}>
+    <summary>${ico("prohibido")} Modelos excluidos <span class="sub">${L.length} modelo(s)${opsEx.length ? ` · ${opsEx.length} OP(s) quitadas de este programa` : ""}</span></summary>
+    <div class="body"><div class="tw"><table><thead><tr><th>Modelo</th><th>Descripción</th><th class="num">OPs en este programa</th><th class="num">Muebles</th><th>Excluido el</th><th></th></tr></thead><tbody>
+    ${L.map(x => { const ops = porRuta.get(norm(x.ruta)) || [];
+      return `<tr><td class="mono"><b>${esc(x.ruta)}</b></td><td>${esc(x.desc || (ops[0] && ops[0].desc) || "")}</td><td class="num">${ops.length || "—"}</td><td class="num">${ops.length ? fmt(ops.reduce((s, o) => s + o.cant, 0)) : "—"}</td>
+        <td class="muted">${esc(x.fecha || "")}</td><td><button class="bReg" data-ruta="${esc(x.ruta)}" title="Volver a tomar en cuenta este modelo">${ico("deshacer")}Regresar</button></td></tr>`; }).join("")}
+    </tbody></table></div>
+    <p class="note">Los modelos excluidos no pasan por Láser de cama: sus OPs se quitan solas de cada programa que cargues. La lista se guarda en este navegador.</p></div></details>`;
+}
+function enlazarExcluidos(el) {
+  const c = el.querySelector("#excCard"); if (c) c.ontoggle = () => ls.set("nl_excAbierto", c.open ? "1" : "0");
+  el.querySelectorAll(".bReg").forEach(bt => bt.onclick = async () => {
+    regresarModelo(bt.dataset.ruta); S.nidos = null; estado(`Modelo ${bt.dataset.ruta} regresado al programa`);
+    try { await analizarPrograma(); } catch (e) { alert(e.message); }
+    render();
+  });
 }
 
 function explosion(filas) {
@@ -1402,7 +1449,7 @@ function vistaExp(filas) {
 function listaPendientes(filas) {
   const L = [];
   const b = S.biblio; if (!b) return L;
-  const rutasProg = new Set((S.programa ? S.programa.ops : []).map(o => norm(o.ruta)));
+  const rutasProg = new Set(opsVigentes().map(o => norm(o.ruta)));
   const vistos = new Set();
   const addPieza = (r, m) => {
     const res = resultadoPieza(m); if (res.pendiente) return;
@@ -2307,7 +2354,8 @@ async function exportarExcel(filas, L) {
   res.mergeCells("A2:D2"); res.getCell("A2").value = `Generado ${fechaTxt}`; res.getCell("A2").font = { size: 9, italic: true, color: { argb: C.gris } };
   let rr = 4;
   const kv = (k, v) => { res.getCell(rr, 1).value = k; res.getCell(rr, 1).font = { bold: true, size: 10 }; res.getCell(rr, 2).value = v; res.getCell(rr, 2).font = { size: 10 }; res.mergeCells(rr, 2, rr, 4); rr++; };
-  kv("Programa", S.programa ? `${S.programa.nombre} · ${S.programa.ops.length} OPs` : "—");
+  const nVig = opsVigentes().length;
+  kv("Programa", S.programa ? `${S.programa.nombre} · ${nVig} OPs${S.programa.ops.length > nVig ? ` (${S.programa.ops.length - nVig} de modelos excluidos)` : ""}` : "—");
   kv("Biblioteca", S.biblio ? S.biblio.raiz : "—");
   rr++;
   ["Severidad", "En programa", "Total", "Qué significa"].forEach((t, i) => { const c = res.getCell(rr, i + 1); c.value = t; c.font = { bold: true, color: { argb: C.blanco } }; c.fill = fill(C.verde); c.border = borde; });
@@ -2472,7 +2520,8 @@ $("#fProg").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
     S.programa = leerPrograma(new Uint8Array(await f.arrayBuffer()), f.name); S.nidos = null;
-    estado(`Programa: ${S.programa.ops.length} OPs`);
+    const nVig = opsVigentes().length;
+    estado(`Programa: ${nVig} OPs${S.programa.ops.length > nVig ? ` (${S.programa.ops.length - nVig} de modelos excluidos)` : ""}`);
     if (S.biblio) await analizarPrograma();
   } catch (err) { alert("Programa: " + err.message); }
   e.target.value = ""; render();
@@ -2481,7 +2530,7 @@ $("#fProg").onchange = async e => {
 async function analizarPrograma() {
   if (!S.programa || !S.biblio) return;
   const metas = [];
-  for (const op of S.programa.ops) { const r = S.biblio.rutas.get(norm(op.ruta)); if (r) metas.push(...r.clas.vig); }
+  for (const op of opsVigentes()) { const r = S.biblio.rutas.get(norm(op.ruta)); if (r) metas.push(...r.clas.vig); }
   await analizarArchivos([...new Map(metas.map(m => [m.id, m])).values()], "Revisando dibujos del programa");
 }
 

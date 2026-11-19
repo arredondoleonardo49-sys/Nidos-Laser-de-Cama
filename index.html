@@ -2054,6 +2054,7 @@ async function publicarNidos(btn) {
     const guardados = () => new Set(S.estado.nidos.filter(n => n.programaId === N.id).map(n => n.id));
     let ya = guardados();
     progreso(null);
+    if (ya.size >= total) N.publicado = true;
     if (ya.size >= total) throw new Error(`El programa ${N.id} ya está publicado completo (${total} nidos).`);
     const porSubir = hojas.filter(x => !ya.has(x.h.id));
     const disp = new Set(S.estado.retazos.filter(r => r.estado === "disponible").map(r => r.id));
@@ -2085,7 +2086,7 @@ async function publicarNidos(btn) {
     }
     progreso(null);
     if (ya.size < total) alert(`Se confirmaron ${ya.size} de ${total} nidos. Revisa la conexión y presiona Publicar para corte otra vez: solo se manda ${losQueFaltan(total - ya.size)}.`);
-    else { alert(`Programa ${N.id} publicado: ${total} nidos listos en Corte.`); ls.set("nl_progCorte", N.id); }
+    else { N.publicado = true; alert(`Programa ${N.id} publicado: ${total} nidos listos en Corte.`); ls.set("nl_progCorte", N.id); }
   } catch (e) { progreso(null); alert("Publicar: " + e.message); }
   btn.disabled = false;
 }
@@ -2701,6 +2702,106 @@ function ponerModo(m) {
 document.querySelectorAll(".nav-item[data-m]").forEach(b => b.onclick = () => ponerModo(b.dataset.m));
 setInterval(() => { if (document.body.classList.contains("mcorte") && !document.hidden && !S.cargandoEstado) cargarEstado().then(vistaOperacion).catch(() => {}); }, 60000);
 
+/* ============================== VERSIÓN AL DÍA EN TODOS LOS EQUIPOS, EN SEGUNDO PLANO (Leonardo, 2026-11-18) ============================== */
+// «Que las plataformas en las otras PC se actualicen en automático… sin ventanas ni tener que seleccionar nada».
+// Igual que la OEE (382512b): cada pantalla compara su código con el publicado (cada 3 min y al volver a la pestaña) y, si hay
+// versión nueva, se recarga sola y sin avisar en cuanto nadie la usa: sin cálculo en curso, sin cursor en un campo, sin ventana
+// abierta y 1 min sin tocarla. En Planeación no se pierde trabajo: con nidos sin publicar no se recarga; con programa o biblioteca
+// cargados espera 30 min sin uso y solo si al volver se recuperan solos (programa de Programación Troqueles; biblioteca de Drive o
+// de la carpeta con el permiso ya dado). Vuelve a la misma pantalla. No corre en el equipo local (banco), salvo en su prueba.
+const UPD_CADA = 3 * 60000, UPD_QUIETO = 60000, UPD_CAMPO = 10 * 60000, UPD_VENTANA = 20 * 60000, UPD_TRABAJO = 30 * 60000;
+const SK_UPD_RESTORE = "nl_upd_restore_v1", SK_UPD_N = "nl_upd_n_v1";
+/** Firma del código de la página (los <script> en línea): cambia con cada versión publicada */
+function firmaCodigo(doc) {
+  let s = ""; doc.querySelectorAll("script:not([src])").forEach(x => { s += x.textContent + "\u0000"; });
+  let h1 = 0x811c9dc5, h2 = 7; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 31) + c) | 0; }
+  return s.length + "." + (h1 >>> 0).toString(36) + "." + (h2 >>> 0).toString(36);
+}
+let _firma = null, _nueva = false, _revisando = false, _ultRev = 0, _ultAccion = Date.now(), _reintento = null;
+["pointerdown", "keydown", "input", "wheel", "touchstart"].forEach(ev => document.addEventListener(ev, () => { _ultAccion = Date.now(); }, { capture: true, passive: true }));
+const updActivo = () => /^https?:/.test(location.protocol) && (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || /pruebas=actualiza/.test(location.search));
+const urlPagina = () => location.href.split("#")[0].replace(/([?&])_v=\d+&?/, "$1").replace(/[?&]$/, "");
+async function revisarVersion() {
+  if (_revisando || _nueva || navigator.onLine === false || !updActivo()) return;
+  _revisando = true; _ultRev = Date.now();
+  try {
+    if (_firma === null) _firma = firmaCodigo(document);
+    const url = urlPagina(), r = await fetch(url + (url.includes("?") ? "&" : "?") + "_v=" + Date.now(), { cache: "no-store", credentials: "same-origin" });
+    const txt = r.ok ? await r.text() : "";
+    if (/<title>Nidos Láser de Cama/.test(txt) && /<\/html>\s*$/i.test(txt)) {      // solo una página completa de Nidos (no un error o algo a medio publicar)
+      const f = firmaCodigo(new DOMParser().parseFromString(txt, "text/html"));
+      if (f !== _firma) { _nueva = true; console.info("Nidos: hay una versión nueva publicada; se actualiza sola en cuanto la pantalla esté libre."); intentarRecargar(); }
+    }
+  } catch (e) { /* sin red: se revisa en la siguiente vuelta */ }
+  _revisando = false;
+}
+/** '' = se puede recargar ya; si no, por qué se espera */
+function motivoEspera() {
+  const quieto = Date.now() - _ultAccion, a = document.activeElement;
+  if (!$("#prog").classList.contains("hide") || $("#bLeer").disabled || S.cargandoEstado || S.prog.cargando) return "calculando";
+  if (S.nidos && !S.nidos.publicado) return "nidos sin publicar";
+  if (a && a !== document.body && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) && quieto < UPD_CAMPO) return "campo";
+  if (document.querySelector("dialog[open]") && quieto < UPD_VENTANA) return "ventana";
+  if ((S.programa || S.biblio) && quieto < UPD_TRABAJO) return "planeando";
+  if (quieto < UPD_QUIETO && !document.hidden) return "en uso";
+  return "";
+}
+/** ¿Lo cargado en Planeación vuelve solo después de recargar? */
+async function trabajoRecuperable() {
+  if (S.nidos && !S.nidos.publicado) return false;
+  if (S.programa && S.programa.origen !== "programas") return false;           // Excel de BC: habría que volver a subirlo
+  if (S.biblio) {
+    if (S.biblio.origen === "drive") return fuenteBiblio() === "drive";
+    if (S.biblio.origen !== "carpeta" || fuenteBiblio() !== "carpeta") return false;   // archivos sueltos (modo local)
+    try { const h = await idb.get(CLAVE_CARPETA); return !!h && (await h.queryPermission({ mode: "read" })) === "granted"; } catch (e) { return false; }
+  }
+  return true;
+}
+function intentarRecargar() {
+  clearTimeout(_reintento);
+  if (!_nueva) return;
+  // Si en 15 min ya se recargó 3 veces y sigue igual (el servidor aún reparte la versión anterior), se vuelve a revisar en la siguiente vuelta
+  let n = []; try { n = JSON.parse(sessionStorage.getItem(SK_UPD_N) || "[]").filter(t => Date.now() - t < 15 * 60000); } catch (e) {}
+  if (n.length >= 3) { _nueva = false; return; }
+  if (motivoEspera()) { _reintento = setTimeout(intentarRecargar, 15000); return; }
+  trabajoRecuperable().then(ok => {
+    if (!_nueva) return;
+    if (!ok) { _reintento = setTimeout(intentarRecargar, 60000); return; }
+    if (motivoEspera()) { _reintento = setTimeout(intentarRecargar, 15000); return; }
+    recargarAhora(n);
+  });
+}
+async function recargarAhora(n) {
+  try {
+    sessionStorage.setItem(SK_UPD_RESTORE, JSON.stringify({ ts: Date.now(), y: Math.round(window.scrollY || 0),
+      prog: S.programa && S.programa.origen === "programas" ? S.programa.dia : null, biblio: S.biblio ? S.biblio.origen : null }));
+    sessionStorage.setItem(SK_UPD_N, JSON.stringify([...(n || []), Date.now()]));
+  } catch (e) {}
+  try { await fetch(urlPagina(), { cache: "reload", credentials: "same-origin" }); } catch (e) {}   // trae la versión nueva al caché antes de recargar
+  setTimeout(() => location.reload(), 800);
+}
+/** Después de actualizarse: misma pantalla (modo y pestaña ya se guardan) y, en Planeación, la misma biblioteca y el mismo programa */
+async function restaurarTrasActualizar() {
+  let st = null; try { st = JSON.parse(sessionStorage.getItem(SK_UPD_RESTORE)); sessionStorage.removeItem(SK_UPD_RESTORE); } catch (e) {}
+  if (!st || !(Date.now() - st.ts < 180000)) return;
+  try {
+    if (st.biblio === "drive" && fuenteBiblio() === "drive") { progreso("Leyendo la biblioteca en Drive…", 0.05); await cargarListado(false); }
+    else if (st.biblio === "carpeta" && fuenteBiblio() === "carpeta" && window.showDirectoryPicker) {
+      const h = await idb.get(CLAVE_CARPETA);
+      if (h && (await h.queryPermission({ mode: "read" })) === "granted") { progreso(`Leyendo la carpeta ${h.name}…`, 0.05); armarBiblioteca(h.name, await listarCarpeta(h)); }
+    }
+    if (st.prog) { await cargarProgramas(); const p = S.prog.programas.find(x => x.dia === st.prog); if (p) S.programa = programaDesdeNube(p); }
+    if (S.programa && S.biblio) await analizarPrograma();
+    estado("Nidos se actualizó a la versión nueva");
+  } catch (e) { console.warn("restaurarTrasActualizar", e); }
+  progreso(null); syncCfg(); render();
+  if (st.y) setTimeout(() => { try { window.scrollTo(0, st.y); } catch (e) {} }, 400);
+}
+setTimeout(revisarVersion, 30000);
+setInterval(revisarVersion, UPD_CADA);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - _ultRev > 60000) revisarVersion(); });
+window.addEventListener("online", () => { setTimeout(revisarVersion, 5000); });
+
 (function init() {
   syncCfg();
   if (ls.get("nl_menu", innerWidth < 760 ? "1" : "0") === "1") $("#sidebar").classList.add("collapsed");
@@ -2711,6 +2812,7 @@ setInterval(() => { if (document.body.classList.contains("mcorte") && !document.
   render();
   $("#bProgNube").onclick = abrirProgramasNube;
   cargarProgramas().then(render);                     // base de Programación Troqueles (modelos que no pasan) y programas de Troqueles
+  restaurarTrasActualizar();                           // si se acaba de actualizar sola: vuelve a cargar lo que tenía
 })();
 </script>
 </body>
